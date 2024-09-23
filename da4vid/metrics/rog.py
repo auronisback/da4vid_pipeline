@@ -17,7 +17,7 @@ MASSES = torch.Tensor([
 ATOM_TO_MASS = {'C': 0, 'N': 1, 'O': 2, 'H': 3, 'S': 4}
 
 
-def rog(X: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
+def rog(X: torch.Tensor, A: torch.Tensor, device=device) -> torch.Tensor:
   """
   Evaluates the radius-of-gyration of the given proteins, expressed with
   atomic coordinates and one-hot encoding of its atoms
@@ -25,6 +25,8 @@ def rog(X: torch.Tensor, A: torch.Tensor) -> torch.Tensor:
   :param A: One-hot encoding atom types tensor with shape B x 5
   :return: A vector with shape B with RoG values for each protein in the batch
   """
+  X = X.to(device)
+
   assert X.ndim == 3, f"X must be a 3D tensor, found shape {X.shape}"
   assert A.dim() == 3, f"a must be a 3D tensor, found shape {A.shape}"
   assert X.shape[0] == A.shape[0], f"X {X.shape[0]} and a {A.shape[0]} must have the same batch dimension"
@@ -45,7 +47,7 @@ def atoms_to_one_hot(seqs: List[List[str]], device=device) -> torch.Tensor:
   A = torch.zeros([len(seqs), len(seqs[0]), 5]).to(device)
   for i, b in enumerate(seqs):
     for j, elem in enumerate(b):
-      if elem != '':
+      if elem is not None:
         A[i, j, ATOM_TO_MASS[elem]] = 1.
   return A
 
@@ -118,19 +120,3 @@ def write_csv(names: List[str], rogs: torch.Tensor, plddts: torch.Tensor, filena
     for name, r, plddt in zip(names, rogs, plddts):
       f.write(f"{name};{r.item()};{plddt.item()}\n")
     f.flush()
-
-
-if __name__ == '__main__':
-  if len(sys.argv) != 2:
-    print(f'Usage: {sys.argv[0]} <folder_with_pdb_structures>')
-    exit(1)
-  folder = sys.argv[1]
-  if not os.path.isdir(folder):
-    print(f'Folder {folder} does not exists.')
-    exit(1)
-
-  output_file = f"{folder}.csv"
-  names, X, seqs, plddts = load_folder(folder)
-  A = atoms_to_one_hot(seqs)
-  rogs = rog(X, A)
-  write_csv(names, rogs, plddts, output_file)

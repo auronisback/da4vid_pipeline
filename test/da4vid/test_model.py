@@ -93,6 +93,21 @@ class ProteinTest(unittest.TestCase):
     torch.testing.assert_close(coords,
                                torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, 0, 0], [0, -1, 0], [0, 0, -1]]))
 
+  def test_rog(self):
+    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
+    protein = Protein('DEM0', device=device)
+    chain_A = Chain('A', residues=Residues.from_sequence('CC'), protein=protein)
+    chain_B = Chain('B', residues=Residues.from_sequence('AA'), protein=protein)
+    protein.chains = [chain_A, chain_B]
+    chain_A.residues[0].atoms = [Atom(residue=chain_A.residues[0], symbol='C', coords=(1, 0, 0)),
+                                 Atom(residue=chain_A.residues[0], symbol='N', coords=(0, 1, 0))]
+    chain_A.residues[1].atoms = [Atom(residue=chain_A.residues[1], symbol='O', coords=(0, 0, 1))]
+    chain_B.residues[0].atoms = [Atom(residue=chain_B.residues[0], symbol='H', coords=(-1, 0, 0)),
+                                 Atom(residue=chain_B.residues[0], symbol='S', coords=(0, -1, 0))]
+    chain_B.residues[1].atoms = [Atom(residue=chain_B.residues[1], symbol='C', coords=(0, 0, -1))]
+    rog = protein.rog()
+    torch.testing.assert_close(rog, torch.tensor(0.9690).to(device))
+
 
 if __name__ == '__main__':
   unittest.main()

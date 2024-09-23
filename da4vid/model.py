@@ -3,6 +3,8 @@ from typing import List, Dict, Any, Tuple
 import abc
 import torch
 
+from da4vid.metrics.rog import rog, atoms_to_one_hot
+
 IUPAC_DATA = {
   "A": "Ala",
   "C": "Cys",
@@ -85,10 +87,12 @@ class Residues(abc.ABC):
 
 
 class Chain:
-  def __init__(self, name: str = None, protein=None, residues: List[Residue] = None):
+  def __init__(self, name: str = None, protein=None, residues: List[Residue] = None, device: str = 'cpu'):
     self.name = name
     self.protein = protein
     self.residues = residues if residues is not None else []
+    # Setting the same device of protein if given
+    self.device = protein.device if protein is not None else device
     self.__coords = None  # Caching coords
 
   def sequence(self):
@@ -101,19 +105,21 @@ class Chain:
         for atom in residue.atoms:
           if atom.coords is not None:
             coords.append(atom.coords)
-      self.__coords = torch.tensor(coords)
+      self.__coords = torch.tensor(coords).to(self.device)
     return self.__coords
 
 
 class Protein:
   def __init__(self, name, file: str = None,
-               chains: List[Chain] = None, props: Dict[str, Any] = None):
+               chains: List[Chain] = None, props: Dict[str, Any] = None, device: str = 'cpu'):
     self.name = name
     self.file = file  # Sequence or PDB file
     self.chains = chains if chains is not None else []
     self.props = props if props is not None else {}
+    self.device = device
     self.__sequence = None  # Cache for sequence
     self.__coords = None  # Cache for coordinates
+    self.__rog = None  # Cache for Radius of Gyration
 
   def sequence(self, separator: str = '') -> str:
     if self.__sequence is None:
@@ -126,5 +132,23 @@ class Protein:
     :return: A torch.Tensor with all atom coordinates
     """
     if self.__coords is None and len(self.chains) > 0:
+      # Moving chains to protein device
+      for chain in self.chains:
+        chain.device = self.device
       return torch.cat([chain.coords() for chain in self.chains])
     return self.__coords
+
+  def rog(self):
+    if self.__rog is None:
+      atom_one_hot = atoms_to_one_hot([self.__get_atom_symbols()], device=self.device)
+      coords = self.coords().unsqueeze(0)
+      self.__rog = rog(coords, atom_one_hot, device=self.device).squeeze()
+    return self.__rog
+
+  def __get_atom_symbols(self):
+    atom_symbols = []
+    for chain in self.chains:
+      for residue in chain.residues:
+        for atom in residue.atoms:
+          atom_symbols.append(atom.symbol)
+    return atom_symbols
