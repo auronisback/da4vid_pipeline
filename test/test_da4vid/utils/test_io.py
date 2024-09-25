@@ -109,7 +109,7 @@ class IOTest(unittest.TestCase):
     with self.assertRaises(ValueError):
       read_pdb_folder(pdb_in)
 
-  def test_read_pdb(self):
+  def test_read_single_pdb(self):
     pdb_in = f'{RESOURCES_ROOT}/io_test_folder_pdb/io_test_1.pdb'
     protein = read_from_pdb(pdb_in)
     self.__check_io_test_1_protein(protein, 'temperature')

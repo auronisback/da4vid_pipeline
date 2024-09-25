@@ -37,6 +37,20 @@ class ResidueTest(unittest.TestCase):
     for i, c in enumerate(sequence):
       self.assertEqual(residues[i].get_one_letter_code(), c, f'Wrong code for residue {i}')
 
+  def test_backbone_atom_recovery(self):
+    residue = Residue(1, code='THR', atoms=[
+      Atom(code='CA'), Atom(code='N'),
+      Atom(code='C'), Atom(code='O'),
+      Atom(code='CB'), Atom(code='OG1'),
+      Atom(code='CG2'), Atom(code='OXT'),
+    ])
+    backbone = residue.get_backbone_atoms()
+    self.assertEqual(4, len(backbone), 'Invalid backbone length')
+    self.assertEqual('N', backbone[0].code)
+    self.assertEqual('CA', backbone[1].code)
+    self.assertEqual('C', backbone[2].code)
+    self.assertEqual('O', backbone[3].code)
+
 
 class ChainTest(unittest.TestCase):
 
@@ -54,6 +68,31 @@ class ChainTest(unittest.TestCase):
     coords = chain.coords()
     self.assertEqual(coords.shape, torch.Size((3, 3)), 'Wrong shape for coordinates tensor')
     torch.testing.assert_close(coords, torch.tensor([[1, 0, 0], [0, -1, 0], [1, 0, 1]]))
+
+  def test_chain_backbone_atom_recovery(self):
+    chain = Chain('A', residues=[
+      Residue(1, code='SER', atoms=[
+        Atom(code='CA'), Atom(code='N'),
+        Atom(code='O'), Atom(code='C'),
+        Atom(code='CB'), Atom(code='OG')
+      ]),
+      Residue(2, code='THR', atoms=[
+        Atom(code='O'), Atom(code='C'),
+        Atom(code='CA'), Atom(code='N'),
+        Atom(code='CG2'), Atom(code='OG1'),
+        Atom(code='CB'), Atom(code='OXT'),
+      ])
+    ])
+    backbone = chain.get_backbone_atoms()
+    self.assertEqual(8, len(backbone), 'Invalid backbone length')
+    self.assertEqual('N', backbone[0].code)
+    self.assertEqual('CA', backbone[1].code)
+    self.assertEqual('C', backbone[2].code)
+    self.assertEqual('O', backbone[3].code)
+    self.assertEqual('N', backbone[4].code)
+    self.assertEqual('CA', backbone[5].code)
+    self.assertEqual('C', backbone[6].code)
+    self.assertEqual('O', backbone[7].code)
 
 
 class ProteinTest(unittest.TestCase):
@@ -93,9 +132,23 @@ class ProteinTest(unittest.TestCase):
     torch.testing.assert_close(coords,
                                torch.tensor([[1, 0, 0], [0, 1, 0], [0, 0, 1], [-1, 0, 0], [0, -1, 0], [0, 0, -1]]))
 
-  def test_rog(self):
-    device = 'cuda:0' if torch.cuda.is_available() else 'cpu'
-    protein = Protein('DEM0', device=device)
+  def test_protein_cache_coordinates(self):
+    protein = Protein('DEM0')
+    chain_A = Chain('A', residues=Residues.from_sequence('CC'), protein=protein)
+    chain_B = Chain('B', residues=Residues.from_sequence('AA'), protein=protein)
+    protein.chains = [chain_A, chain_B]
+    chain_A.residues[0].atoms = [Atom(residue=chain_A.residues[0], code='C', coords=(1, 0, 0)),
+                                 Atom(residue=chain_A.residues[0], code='N', coords=(0, 1, 0))]
+    chain_A.residues[1].atoms = [Atom(residue=chain_A.residues[1], code='H', coords=(0, 0, 1))]
+    chain_B.residues[0].atoms = [Atom(residue=chain_B.residues[0], code='H', coords=(-1, 0, 0)),
+                                 Atom(residue=chain_B.residues[0], code='O', coords=(0, -1, 0))]
+    chain_B.residues[1].atoms = [Atom(residue=chain_B.residues[1], code='C', coords=(0, 0, -1))]
+    coords = protein.coords()
+    cached_coords = protein.coords()
+    torch.testing.assert_close(coords, cached_coords, msg='Invalid retrieval of cached values')
+
+  def test_retrieve_atom_symbols(self):
+    protein = Protein('DEM0')
     chain_A = Chain('A', residues=Residues.from_sequence('CC'), protein=protein)
     chain_B = Chain('B', residues=Residues.from_sequence('AA'), protein=protein)
     protein.chains = [chain_A, chain_B]
@@ -105,8 +158,8 @@ class ProteinTest(unittest.TestCase):
     chain_B.residues[0].atoms = [Atom(residue=chain_B.residues[0], symbol='H', coords=(-1, 0, 0)),
                                  Atom(residue=chain_B.residues[0], symbol='S', coords=(0, -1, 0))]
     chain_B.residues[1].atoms = [Atom(residue=chain_B.residues[1], symbol='C', coords=(0, 0, -1))]
-    rog = protein.rog()
-    torch.testing.assert_close(rog, torch.tensor(0.9690).to(device))
+    atom_symbols = protein.get_atom_symbols()
+    self.assertEqual(['C', 'N', 'O', 'H', 'S', 'C'], atom_symbols, 'Atom symbols do not match')
 
 
 if __name__ == '__main__':
