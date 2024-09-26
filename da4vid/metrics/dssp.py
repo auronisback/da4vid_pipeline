@@ -27,3 +27,28 @@ def dssp(proteins: Union[List[Protein], Protein]) -> Union[str, List[str]]:
   if len(assignments) == 1:
     return ''.join(assignments[0])
   return [''.join(assignments[i]) for i in range(len(assignments))]
+
+
+def count_secondary_structures(proteins: Union[Protein, List[Protein]]) -> Union[int, List[int]]:
+  """
+  Counts the number of secondary structures in a single protein or
+  in a set of proteins.
+  :param proteins: A single protein or a list of proteins
+  :return: A number or a list of numbers of secondary structures
+           in the input proteins
+  """
+  ss_seqs = dssp(proteins)
+  if isinstance(ss_seqs, str):
+    return __count_ss_from_seq(ss_seqs)
+  return [__count_ss_from_seq(seq) for seq in ss_seqs]
+
+
+def __count_ss_from_seq(ss_seq: str) -> int:
+  act = '-'
+  count = 0
+  for c in ss_seq:
+    if c != act:
+      act = c
+      if c != '-':
+        count += 1
+  return count

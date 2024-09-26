@@ -16,9 +16,19 @@ ATOM_MASSES = torch.Tensor([
 ATOM_TO_MASS = {'C': 0, 'N': 1, 'O': 2, 'H': 3, 'S': 4}
 
 
-def rog(proteins: Union[Protein, List[Protein]], device: str = 'cpu'):
+def rog(proteins: Union[Protein, List[Protein]], device: str = 'cpu') -> torch.Tensor:
+  """
+  Evaluates Radius of Gyration of the given protein or proteins.
+  :param proteins: A single protein or a list of proteins. A 'rog' prop
+                   will be inserted into the proteins
+  :param device: the device on which perform the calculation
+  :return: A tensor with radii of gyration of the given proteins, or
+           an empty tensor if no proteins have been specified
+  """
   if isinstance(proteins, Protein):
     proteins = [proteins]
+  if len(proteins) == 0:
+    return torch.Tensor()  # 0-dimensional tensor
   coords = []
   atoms = []
   for protein in proteins:
@@ -26,7 +36,11 @@ def rog(proteins: Union[Protein, List[Protein]], device: str = 'cpu'):
     atoms.append(protein.get_atom_symbols())
   X = torch.stack(coords)
   A = __atoms_to_one_hot(atoms)
-  return __rog(X, A, device=device).squeeze()
+  radii = __rog(X, A, device=device)
+  for protein, radius in zip(proteins, radii):
+    protein.props['rog'] = radius
+  return radii.squeeze()
+
 
 
 def __rog(X: torch.Tensor, A: torch.Tensor, device='cpu') -> torch.Tensor:
