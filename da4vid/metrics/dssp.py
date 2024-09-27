@@ -17,6 +17,8 @@ def dssp(proteins: Union[List[Protein], Protein], device: str = 'cpu') -> Union[
   """
   if isinstance(proteins, Protein):
     proteins = [proteins]
+  if len(proteins) == 0:
+    return []
   batches = []
   for protein in proteins:
     coords = []
@@ -24,8 +26,21 @@ def dssp(proteins: Union[List[Protein], Protein], device: str = 'cpu') -> Union[
     for residue in residues:
       coords.append([[*atom.coords] for atom in residue.get_backbone_atoms()])
     batches.append(coords)
-  batches = torch.stack([torch.tensor(prot) for prot in batches]).to(device)
-  assignments = pydssp.assign(batches, out_type='c3')
+  # Checking if they are stackable
+  stackable = True
+  n_resi = len(batches[0])
+  for batch in batches:
+    if len(batch) != n_resi:
+      stackable = False
+      break
+  assignments = []
+  if stackable:
+    batches = torch.stack([torch.tensor(prot) for prot in batches]).to(device)
+    assignments = pydssp.assign(batches, out_type='c3')
+  else:  # Not stackable: cycling one by one
+    for batch in batches:
+      assignment = pydssp.assign(torch.tensor(batch).unsqueeze(0), out_type='c3')
+      assignments.append(*assignment)
   if len(assignments) == 1:
     return ''.join(assignments[0])
   return [''.join(assignments[i]) for i in range(len(assignments))]
