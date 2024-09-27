@@ -1,15 +1,17 @@
 from typing import List, Union
 
-import torch, pydssp
+import pydssp
+import torch
 
 from da4vid.model import Protein
 
 
-def dssp(proteins: Union[List[Protein], Protein]) -> Union[str, List[str]]:
+def dssp(proteins: Union[List[Protein], Protein], device: str = 'cpu') -> Union[str, List[str]]:
   """
   Evaluates the Dictionary of Secondary Structure of Protein (DSSP) for a given
   protein.
   :param proteins: A single protein or a list of proteins
+  :param device: The device on which execute operations
   :return: A string with secondary structures code if only one protein was given,
            or a list of such strings for each input protein
   """
@@ -22,22 +24,23 @@ def dssp(proteins: Union[List[Protein], Protein]) -> Union[str, List[str]]:
     for residue in residues:
       coords.append([[*atom.coords] for atom in residue.get_backbone_atoms()])
     batches.append(coords)
-  batches = torch.stack([torch.tensor(prot) for prot in batches])
+  batches = torch.stack([torch.tensor(prot) for prot in batches]).to(device)
   assignments = pydssp.assign(batches, out_type='c3')
   if len(assignments) == 1:
     return ''.join(assignments[0])
   return [''.join(assignments[i]) for i in range(len(assignments))]
 
 
-def count_secondary_structures(proteins: Union[Protein, List[Protein]]) -> Union[int, List[int]]:
+def count_secondary_structures(proteins: Union[Protein, List[Protein]], device: str = 'cpu') -> Union[int, List[int]]:
   """
   Counts the number of secondary structures in a single protein or
   in a set of proteins.
   :param proteins: A single protein or a list of proteins
+  :param device: The device on which execute the evaluation
   :return: A number or a list of numbers of secondary structures
            in the input proteins
   """
-  ss_seqs = dssp(proteins)
+  ss_seqs = dssp(proteins, device=device)
   if isinstance(ss_seqs, str):
     return __count_ss_from_seq(ss_seqs)
   return [__count_ss_from_seq(seq) for seq in ss_seqs]

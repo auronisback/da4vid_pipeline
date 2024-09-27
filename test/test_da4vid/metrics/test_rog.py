@@ -4,6 +4,7 @@ import torch
 
 from da4vid.metrics import rog
 from da4vid.model import Residues, Protein, Chain, Atom
+from test.cfg import TEST_GPU
 
 
 class RoGTest(unittest.TestCase):
@@ -76,6 +77,18 @@ class RoGTest(unittest.TestCase):
                                  msg=f'Invalid rog prop for protein {i}: '
                                      f'[Expected] {ground_truth} != Actual {protein.props["rog"].item()}')
 
+  def test_rog_evaluation_on_gpu(self):
+    proteins = [self.__get_demo_protein_1(), self.__get_demo_protein_2()]
+    radii = rog(proteins, device=TEST_GPU)
+    ground_truths = torch.tensor([0.96, 1.4092]).to(TEST_GPU)
+    self.assertEqual(2, radii.shape[0], msg='Invalid shape')
+    torch.testing.assert_close(ground_truths, radii, atol=1e-4, rtol=1e-6,
+                               msg=f'Radii do not match: Expected {ground_truths}, actual {radii}')
+    for i, protein, radius, ground_truth in zip(range(2), proteins, radii, ground_truths):
+      self.assertIn('rog', protein.props.keys(), f'rog prop not added to protein {i}')
+      torch.testing.assert_close(ground_truth.item(), protein.props['rog'].item(), atol=1e-4, rtol=1e-6,
+                                 msg=f'Invalid rog prop for protein {i}: '
+                                     f'[Expected] {ground_truth} != Actual {protein.props["rog"].item()}')
 
 if __name__ == '__main__':
   unittest.main()

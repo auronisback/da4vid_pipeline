@@ -67,6 +67,7 @@ def __rog(X: torch.Tensor, A: torch.Tensor, device='cpu') -> torch.Tensor:
   :return: A vector with shape B with RoG values for each protein in the batch
   """
   X = X.to(device)
+  A = A.to(device)
   masses = ATOM_MASSES.to(device)
 
   assert X.ndim == 3, f"X must be a 3D tensor, found shape {X.shape}"
