@@ -63,6 +63,9 @@ def __load_protein(pdb_file: Union[str, Path], b_fact_prop: str) -> Protein:
         coords = (float(line[30:38]), float(line[38:46]), float(line[46:54]))
         b_fact = float(line[60:66].strip())
         symbol = line[76:78].strip()
+        # Sanitizing symbol if not present
+        if not symbol:
+          symbol = atom_name[0]  # Symbol is the firs character of atom_name
         atom = Atom(residue=resi, number=atom_number, code=atom_name,
                     coords=coords, symbol=symbol, props={b_fact_prop: b_fact})
         resi.atoms.append(atom)

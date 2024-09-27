@@ -117,9 +117,15 @@ class IOTest(unittest.TestCase):
   def test_read_pdb_folder(self):
     folder = f'{RESOURCES_ROOT}/io_test_folder_pdb'
     proteins = read_pdb_folder(folder, b_fact_prop='b_factor')
-    self.assertEqual(2, len(proteins), 'Read proteins number does not match')
+    self.assertEqual(6, len(proteins), 'Read proteins number does not match')
     prot_dict = {protein.name: protein for protein in proteins}
     self.assertIn('io_test_1', prot_dict.keys(), 'Unable to found protein io_test_1')
     self.__check_io_test_1_protein(prot_dict['io_test_1'], 'b_factor')
     self.assertIn('io_test_2', prot_dict.keys(), 'Unable to found protein io_test_2')
     self.__check_io_test_2_protein(prot_dict['io_test_2'], 'b_factor')
+
+  def test_read_single_pdb_with_atom_sanitizing(self):
+    pdb_in = f'{RESOURCES_ROOT}/io_test_folder_pdb/orig.pdb'
+    protein = read_from_pdb(pdb_in)
+    for i, a in enumerate(protein.get_atom_symbols()):
+      self.assertNotEqual('', a, f'Invalid symbol read at position {i}')

@@ -32,15 +32,29 @@ def rog(proteins: Union[Protein, List[Protein]], device: str = 'cpu') -> torch.T
   coords = []
   atoms = []
   for protein in proteins:
+    atom_symbols = protein.get_atom_symbols()
     coords.append(protein.coords())
-    atoms.append(protein.get_atom_symbols())
-  X = torch.stack(coords)
-  A = __atoms_to_one_hot(atoms)
-  radii = __rog(X, A, device=device)
+    atoms.append(atom_symbols)
+  # Check if proteins can be stacked together in torch
+  stackable = True
+  shape = coords[0].shape
+  for c in coords:
+    if shape != c.shape:
+      stackable = False
+      break
+  if stackable:
+    X = torch.stack(coords)
+    A = __atoms_to_one_hot(atoms)
+    radii = __rog(X, A, device=device)
+  else:
+    radii = []
+    # Not stackable, processing proteins one by one
+    for atom, coord in zip(atoms, coords):
+      radii.append(__rog(coord.unsqueeze(0), __atoms_to_one_hot([atom]), device=device))
+    radii = torch.stack(radii)
   for protein, radius in zip(proteins, radii):
     protein.props['rog'] = radius
   return radii.squeeze()
-
 
 
 def __rog(X: torch.Tensor, A: torch.Tensor, device='cpu') -> torch.Tensor:
