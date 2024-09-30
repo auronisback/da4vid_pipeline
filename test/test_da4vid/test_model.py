@@ -161,6 +161,38 @@ class ProteinTest(unittest.TestCase):
     atom_symbols = protein.get_atom_symbols()
     self.assertEqual(['C', 'N', 'O', 'H', 'S', 'C'], atom_symbols, 'Atom symbols do not match')
 
+  def test_protein_has_chain(self):
+    protein = Protein('DEM0')
+    chain_A = Chain('A', residues=Residues.from_sequence('CC'), protein=protein)
+    chain_B = Chain('B', residues=Residues.from_sequence('AA'), protein=protein)
+    protein.chains = [chain_A, chain_B]
+    chain_found = protein.has_chain('A')
+    self.assertTrue(chain_found, 'Unable to find chain')
+
+  def test_protein_has_not_chain(self):
+    protein = Protein('DEM0')
+    chain_A = Chain('A', residues=Residues.from_sequence('CC'), protein=protein)
+    chain_B = Chain('B', residues=Residues.from_sequence('AA'), protein=protein)
+    protein.chains = [chain_A, chain_B]
+    chain_found = protein.has_chain('C')
+    self.assertFalse(chain_found, 'Find an unknown chain')
+
+  def test_retrieve_chain_from_protein(self):
+    protein = Protein('DEM0')
+    chain_A = Chain('A', residues=Residues.from_sequence('CC'), protein=protein)
+    chain_B = Chain('B', residues=Residues.from_sequence('AA'), protein=protein)
+    protein.chains = [chain_A, chain_B]
+    chain = protein.get_chain('A')
+    self.assertEqual('A', chain.name, 'Wrong chain retrieved')
+
+  def test_failing_in_retrieving_chain_from_protein_raises_error(self):
+    protein = Protein('DEM0')
+    chain_A = Chain('A', residues=Residues.from_sequence('CC'), protein=protein)
+    chain_B = Chain('B', residues=Residues.from_sequence('AA'), protein=protein)
+    protein.chains = [chain_A, chain_B]
+    with self.assertRaises(ValueError):
+      protein.get_chain('C')
+
 
 if __name__ == '__main__':
   unittest.main()

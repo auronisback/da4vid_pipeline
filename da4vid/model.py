@@ -211,3 +211,22 @@ class Protein:
         for atom in residue.atoms:
           atom_symbols.append(atom.symbol)
     return atom_symbols
+
+  def has_chain(self, name: str) -> bool:
+    for chain in self.chains:
+      if chain.name == name:
+        return True
+    return False
+
+  def get_chain(self, name: str) -> Chain:
+    for chain in self.chains:
+      if chain.name == name:
+        return chain
+    raise ValueError(f'chain {name} not found in protein {self.name}')
+
+  def length(self):
+    """
+    Gets the length of all residues in the protein.
+    :return: The number of AAs in the whole protein
+    """
+    return sum([len(chain.residues) for chain in self.chains])
