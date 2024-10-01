@@ -70,3 +70,57 @@ def __load_protein(pdb_file: Union[str, Path], b_fact_prop: str) -> Protein:
                     coords=coords, symbol=symbol, props={b_fact_prop: b_fact})
         resi.atoms.append(atom)
   return protein
+
+
+def write_pdb(proteins: Union[Protein, List[Protein]],
+              output_folder: str, prefix: str = None) -> List[str]:
+  """
+  Writes a single protein or a list of proteins in the output folder
+  in the PDB format.
+  :param proteins: The single protein or the list of proteins to write
+  :param output_folder: The folder in which to save the proteins, each
+                        in a different .pdb file. If the directory path
+                        does not exist, it will be created unless no
+                        proteins have been specified.
+  :param prefix: The prefix for .pdb filenames in the folder. If
+                         given, each protein filename will be this prefix
+                         concatenated to an incremental index, otherwise
+                         the name of each protein will be its filename
+  :return: The list of paths of written proteins
+  :raise: FileExistsError if the specified folder is a regular file
+  """
+  # Checking if folder is accessible, otherwise it will be created
+  if Path(output_folder).is_file():
+    raise FileExistsError(f'specified output folder is a regular file: {output_folder}')
+  # If no proteins are available, then just return
+  if not proteins:
+    return []
+  # Creating directory path
+  os.makedirs(output_folder, exist_ok=True)
+  if isinstance(proteins, Protein):
+    proteins = [proteins]
+  paths = []
+  for i, protein in enumerate(proteins):
+    # Creating the output path
+    filename = f'{protein.name}.pdb' if prefix is None else f'{prefix}_{i}.pdb'
+    out_path = os.path.join(output_folder, filename)
+    __write_protein_pdb(protein, out_path)
+    paths.append(out_path)
+  return paths
+
+
+def __write_protein_pdb(protein: Protein, out_path: str):
+  with open(out_path, 'w') as f:
+    for chain in protein.chains:
+      for residue in chain.residues:
+        for atom in residue.atoms:
+          atom_bfact = atom.props.get(list(atom.props.keys())[0], 0.)
+          f.write(
+            f'ATOM  {str(atom.number).rjust(5)}  '
+            f'{atom.code.ljust(4)}{residue.get_three_letters_code().rjust(3)} '
+            f'{chain.name}{str(residue.number).rjust(4)}    '
+            f'{atom.coords[0]:8.3f}{atom.coords[1]:8.3f}{atom.coords[2]:8.3f}'
+            f'{"1.00".rjust(6)}{atom_bfact:6.2f}{" " * 11}{atom.symbol}\n'
+          )
+    f.flush()
+

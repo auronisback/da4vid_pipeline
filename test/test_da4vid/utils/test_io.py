@@ -1,13 +1,16 @@
+import os
+import shutil
 import unittest
 
 import torch
 
+from da4vid.model import Protein
 from test.cfg import RESOURCES_ROOT
 
-from da4vid.utils.io import read_from_pdb, read_pdb_folder
+from da4vid.utils.io import read_from_pdb, read_pdb_folder, write_pdb
 
 
-class IOTest(unittest.TestCase):
+class IOReadTest(unittest.TestCase):
 
   def __check_io_test_1_protein(self, protein, b_fact_prop):
     self.assertEqual('io_test_1', protein.name, 'Name does not match')
@@ -129,3 +132,74 @@ class IOTest(unittest.TestCase):
     protein = read_from_pdb(pdb_in)
     for i, a in enumerate(protein.get_atom_symbols()):
       self.assertNotEqual('', a, f'Invalid symbol read at position {i}')
+
+
+class IOWriteTest(unittest.TestCase):
+
+  def setUp(self):
+    self.pdb_output_folder = f'{RESOURCES_ROOT}/io_test_folder_pdb/test_outputs'
+
+  def __check_proteins_equal(self, first: Protein, second: Protein):
+    self.assertEqual(len(first.chains), len(second.chains), 'Mismatched number of chains')
+    for ch_1, ch_2 in zip(first.chains, second.chains):
+      self.assertEqual(ch_1.name, ch_2.name, f'Name not equal for chains')
+      self.assertEqual(len(ch_1.residues), len(ch_2.residues), f'Number of residues mismatched in chain {ch_1.name}')
+      for resi_1, resi_2 in zip(ch_1.residues, ch_2.residues):
+        self.assertEqual(resi_1.number, resi_2.number,
+                         f'Number of residues mismatch: {resi_1.number} != {resi_2.number}')
+        self.assertEqual(resi_1.get_one_letter_code(), resi_2.get_one_letter_code(),
+                         f'Type of residue mismatch for {resi_1.number}')
+        self.assertEqual(len(resi_1.atoms), len(resi_2.atoms),
+                         f'Number of atoms mismatched for residue {resi_1.number}')
+        for atom_1, atom_2 in zip(resi_1.atoms, resi_2.atoms):
+          self.assertEqual(atom_1.number, atom_2.number,
+                           f'Atom number mismatched: {atom_1.number} != {atom_2.number}')
+          self.assertEqual(atom_1.code, atom_2.code, f'Atom codes do not match for atom {atom_1.number}')
+          self.assertEqual(atom_1.coords, atom_2.coords, f'Coordinates mismatched for atom {atom_1.number}')
+          self.assertDictEqual(atom_1.props, atom_2.props, f'Props are not matched for atom {atom_1.number}')
+
+  def test_pdb_write_with_no_proteins_should_not_create_folders(self):
+    pdbs = write_pdb([], self.pdb_output_folder)
+    self.assertEqual(0, len(pdbs), 'Returned paths should be empty')
+    self.assertFalse(os.path.isdir(self.pdb_output_folder),
+                     'Output folder has been wrongly created')
+
+  def test_pdb_write_with_a_file_specified_as_folder_should_raise_error(self):
+    pdb_in = f'{RESOURCES_ROOT}/io_test_folder_pdb/orig.pdb'
+    protein = read_from_pdb(pdb_in)
+    with self.assertRaises(FileExistsError):
+      write_pdb(protein, pdb_in)
+
+  def test_pdb_write_single_protein_without_prefix(self):
+    pdb_in = f'{RESOURCES_ROOT}/io_test_folder_pdb/orig.pdb'
+    pdb_out_folder = self.pdb_output_folder
+    protein = read_from_pdb(pdb_in)
+    pdbs = write_pdb(protein, pdb_out_folder)
+    self.assertTrue(os.path.isdir(pdb_out_folder), 'Output folder has not been created')
+    self.assertEqual(1, len(pdbs), 'Returned path number does not match')
+    self.assertTrue(os.path.isfile(pdbs[0]), 'PDB file not created')
+    reloaded = read_from_pdb(pdbs[0])
+    self.__check_proteins_equal(protein, reloaded)
+
+  def test_pdb_multiple_write_without_prefix(self):
+    pdb_folder = f'{RESOURCES_ROOT}/io_test_folder_pdb'
+    pdb_out_folder = self.pdb_output_folder
+    proteins = read_pdb_folder(pdb_folder)
+    pdbs = write_pdb(proteins, pdb_out_folder)
+    self.assertEqual(len(proteins), len(pdbs), 'Less files written than expected')
+    reloaded = [read_from_pdb(pdb) for pdb in pdbs]
+    for p, r in zip(proteins, reloaded):
+      self.__check_proteins_equal(p, r)
+
+  def test_pdb_multiple_write_with_prefix(self):
+    pdb_folder = f'{RESOURCES_ROOT}/io_test_folder_pdb'
+    pdb_out_folder = self.pdb_output_folder
+    proteins = read_pdb_folder(pdb_folder)
+    pdbs = write_pdb(proteins, pdb_out_folder, prefix='my_prefix')
+    self.assertEqual(len(proteins), len(pdbs), 'Less files written than expected')
+    for i in range(len(pdbs)):
+      complete_path = f'{self.pdb_output_folder}/my_prefix_{i}.pdb'
+      self.assertIn(complete_path, pdbs, f'Value not found: {complete_path}')
+
+  def tearDown(self):
+    shutil.rmtree(self.pdb_output_folder, ignore_errors=True)
