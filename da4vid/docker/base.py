@@ -22,12 +22,19 @@ class BaseContainer(abc.ABC):
   def _run_container(self, client: docker.client.DockerClient = None):
     if client is None:
       client = docker.from_env()
-    return client.containers.run(
+    container = client.containers.run(
       image=self.image,
       entrypoint=self.entrypoint,
-      command=self.commands,
-      remove=self.auto_remove,
       mounts=[Mount(target, source, type='bind') for source, target in self.volumes.items()],
       device_requests=[DeviceRequest(capabilities=[['gpu']])] if self.with_gpus else [],
-      detach=self.detach
+      detach=self.detach,
+      auto_remove=self.auto_remove,
+      tty=True
     )
+    for cmd in self.commands:
+      print(cmd)
+      _, out = container.exec_run(cmd, stream=True)
+      for line in out:
+        print(line.decode().strip())
+    container.stop()
+    return True  # Fix this trying to check response of commands

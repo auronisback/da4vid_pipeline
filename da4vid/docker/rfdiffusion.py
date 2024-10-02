@@ -205,8 +205,8 @@ class RFdiffusionContainer(BaseContainer):
 
   def __init__(self, model_dir, input_dir, output_dir, num_designs: int = 3):
     super().__init__(
-      image='ameg/rfdiffusion',
-      entrypoint='/bin/bash -c',
+      image='ameg/rfdiffusion:latest',
+      entrypoint='/bin/bash',
       with_gpus=True,
       volumes={
         model_dir: RFdiffusionContainer.MODELS_FOLDER,
@@ -224,11 +224,7 @@ class RFdiffusionContainer(BaseContainer):
           potentials: RFdiffusionPotentials = None,
           client: DockerClient = None) -> bool:
     self.commands = [self.__create_commands(input_pdb, contig_map, potentials, partial_T)]
-    rfdiff = super()._run_container(client)
-    for line in rfdiff.logs(stream=True):
-      print(line.decode().strip())
-    results = rfdiff.wait()
-    return results['StatusCode'] == 0
+    return super()._run_container(client)
 
   def __create_commands(self, input_pdb, contig_map: RFdiffusionContigMap,
                         potentials: RFdiffusionPotentials, partial_T: int) -> str:
