@@ -1,7 +1,7 @@
 import unittest
 
 from da4vid.filters import filter_by_rog, filter_by_ss
-from da4vid.utils.io import read_pdb_folder
+from da4vid.io.pdb_io import read_pdb_folder
 from test.cfg import RESOURCES_ROOT, TEST_GPU
 
 

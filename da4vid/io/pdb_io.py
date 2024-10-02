@@ -40,7 +40,7 @@ def read_from_pdb(pdb_file: Union[str, Path], b_fact_prop: str = 'temperature') 
 
 def __load_protein(pdb_file: Union[str, Path], b_fact_prop: str) -> Protein:
   protein_name = '.'.join(os.path.basename(pdb_file).split('.')[:-1])
-  protein = Protein(protein_name, file=str(pdb_file))
+  protein = Protein(protein_name, filename=str(pdb_file))
   with open(pdb_file) as f:
     resi_id = 0  # Global (outside chains) residue identifier
     chain: Chain = Chain('-1')

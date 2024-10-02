@@ -6,8 +6,7 @@ from da4vid.model import Protein
 
 
 def __check_cutoff(cutoff: int, percentage: bool):
-  # Checking parameters
-  if cutoff <= 0:
+  if cutoff < 0:
     raise ValueError(f'Invalid cutoff: {cutoff}')
   if percentage and cutoff > 100:
     raise ValueError(f'Invalid percentage cutoff: {cutoff}')

@@ -3,7 +3,7 @@ import unittest
 import torch
 
 from da4vid.metrics import evaluate_plddt
-from da4vid.utils.io import read_from_pdb, read_pdb_folder
+from da4vid.io.pdb_io import read_from_pdb, read_pdb_folder
 from test.cfg import RESOURCES_ROOT
 
 

@@ -7,7 +7,7 @@ import torch
 from da4vid.model import Protein
 from test.cfg import RESOURCES_ROOT
 
-from da4vid.utils.io import read_from_pdb, read_pdb_folder, write_pdb
+from da4vid.io import read_from_pdb, read_pdb_folder, write_pdb
 
 
 class IOReadTest(unittest.TestCase):

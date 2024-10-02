@@ -2,7 +2,7 @@ import unittest
 
 from test.cfg import RESOURCES_ROOT
 from da4vid.metrics import dssp, count_secondary_structures
-from da4vid.utils.io import read_from_pdb, read_pdb_folder
+from da4vid.io.pdb_io import read_from_pdb, read_pdb_folder
 
 
 class DsspTest(unittest.TestCase):
@@ -19,6 +19,10 @@ class DsspTest(unittest.TestCase):
     self.assertEqual(len(gold_truth),
                      len(ss), 'Unequal length')
     self.assertTrue(DsspTest.__diff_letters(ss, gold_truth) < 4)
+
+  def test_dssp_with_no_proteins(self):
+    sss = dssp([])
+    self.assertEqual([], sss, 'Returned list is not empty')
 
   def test_dssp_on_multiple_proteins(self):
     gold_truths = {

@@ -171,10 +171,10 @@ class Protein:
   """
   Models a Protein.
   """
-  def __init__(self, name, file: str = None,
+  def __init__(self, name, filename: str = None,
                chains: List[Chain] = None, props: Dict[str, Any] = None, device: str = 'cpu'):
     self.name = name
-    self.file = file  # Sequence or PDB file
+    self.filename = filename  # Sequence or PDB file
     self.chains = chains if chains is not None else []
     self.props = props if props is not None else {}
     self.device = device

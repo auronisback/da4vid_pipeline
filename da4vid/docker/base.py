@@ -32,7 +32,6 @@ class BaseContainer(abc.ABC):
       tty=True
     )
     for cmd in self.commands:
-      print(cmd)
       _, out = container.exec_run(cmd, stream=True)
       for line in out:
         print(line.decode().strip())

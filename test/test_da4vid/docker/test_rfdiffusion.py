@@ -2,7 +2,7 @@ import unittest
 
 from da4vid.docker.rfdiffusion import RFdiffusionContigMap, RFdiffusionPotentials
 from da4vid.model import Protein
-from da4vid.utils.io import read_from_pdb
+from da4vid.io.pdb_io import read_from_pdb
 from test.cfg import RESOURCES_ROOT
 
 
