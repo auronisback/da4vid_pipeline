@@ -1,6 +1,6 @@
 import unittest
 
-from da4vid.filters import filter_by_rog, filter_by_ss
+from da4vid.filters import filter_by_rog, filter_by_ss, cluster_by_ss
 from da4vid.io.pdb_io import read_pdb_folder
 from test.cfg import RESOURCES_ROOT, TEST_GPU
 
@@ -111,6 +111,30 @@ class FiltersTest(unittest.TestCase):
     self.assertEqual('sample_1001', filtered[2].name, 'Not valid protein at index 2')
     self.assertEqual('sample_1000', filtered[3].name, 'Not valid protein at index 3')
     self.assertEqual('sample_1008', filtered[4].name, 'Not valid protein at index 4')
+
+  def test_cluster_by_secondary_structures_with_invalid_threshold(self):
+    pdb_folder = f'{RESOURCES_ROOT}/filter_test'
+    proteins = read_pdb_folder(pdb_folder)
+    with self.assertRaises(ValueError):
+      clustering = cluster_by_ss(proteins)
+
+  def test_cluster_by_secondary_structures_without_threshold(self):
+    pdb_folder = f'{RESOURCES_ROOT}/filter_test'
+    proteins = read_pdb_folder(pdb_folder)
+    clustering = cluster_by_ss(proteins)
+    self.assertEqual(5, len(clustering.keys()), 'Invalid number of clusters')
+    for i, k in enumerate(clustering.keys()):
+      for j, protein in enumerate(clustering[k]):
+        self.assertEqual(k, protein.props['ss'], f'Invalid protein {j} in cluster {i}-{k}')
+
+  def test_cluster_by_secondary_structure_with_threshold(self):
+    pdb_folder = f'{RESOURCES_ROOT}/filter_test'
+    proteins = read_pdb_folder(pdb_folder)
+    clustering = cluster_by_ss(proteins, 3)
+    self.assertEqual(3, len(clustering.keys()), 'Invalid number of clusters')
+    self.assertNotIn(0, clustering.keys())
+    self.assertNotIn(1, clustering.keys())
+    self.assertNotIn(2, clustering.keys())
 
 
 if __name__ == '__main__':
