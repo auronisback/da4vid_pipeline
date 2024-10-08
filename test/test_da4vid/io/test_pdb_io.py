@@ -14,7 +14,7 @@ class IOReadTest(unittest.TestCase):
 
   def __check_io_test_1_protein(self, protein, b_fact_prop):
     self.assertEqual('io_test_1', protein.name, 'Name does not match')
-    self.assertEqual(f'{RESOURCES_ROOT}/io_test_folder_pdb/io_test_1.pdb', protein.file, 'Filepath does not match')
+    self.assertEqual(f'{RESOURCES_ROOT}/io_test_folder_pdb/io_test_1.pdb', protein.filename, 'Filepath does not match')
     self.assertEqual(1, len(protein.chains), 'Number of chains does not match')
     chain = protein.chains[0]
     self.assertEqual('A', chain.name, 'Chain name does not match')
@@ -41,7 +41,8 @@ class IOReadTest(unittest.TestCase):
 
   def __check_io_test_2_protein(self, protein, b_fact_prop):
     self.assertEqual('io_test_2', protein.name, 'Name does not match')
-    self.assertEqual(f'{RESOURCES_ROOT}/io_test_folder_pdb/io_test_2.pdb', protein.file, 'Filepath does not match')
+    self.assertEqual(f'{RESOURCES_ROOT}/io_test_folder_pdb/io_test_2.pdb', protein.filename,
+                     'Filepath does not match')
     self.assertEqual(2, len(protein.chains), 'Number of chains does not match')
     chain_A = protein.chains[0]
     self.assertEqual('A', chain_A.name, 'Chain name does not match')

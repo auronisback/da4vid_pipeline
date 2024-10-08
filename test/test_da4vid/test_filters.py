@@ -6,13 +6,17 @@ from test.cfg import RESOURCES_ROOT, TEST_GPU
 
 
 class FiltersTest(unittest.TestCase):
-  def test_filter_should_raise_error_with_negative_cutoff(self):
+  def test_filter_by_rog_should_raise_error_with_negative_cutoff(self):
     with self.assertRaises(ValueError, msg='Error was never raised'):
       filter_by_rog([], cutoff=-2)
 
-  def test_filter_should_raise_error_with_invalid_percentage_cutoff(self):
+  def test_filter_by_rog_should_raise_error_with_invalid_percentage_cutoff(self):
     with self.assertRaises(ValueError, msg='Error was never raised'):
       filter_by_rog([], cutoff=111, percentage=True)
+
+  def test_filter_by_rog_should_raise_error_with_invalid_threshold(self):
+    with self.assertRaises(ValueError, msg='Error was never raised'):
+      filter_by_rog([], threshold=-1)
 
   def test_filter_with_absolute_cutoff(self):
     pdb_folder = f'{RESOURCES_ROOT}/filter_test'

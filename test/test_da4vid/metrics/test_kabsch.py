@@ -19,9 +19,6 @@ class TestKabsch(unittest.TestCase):
     R = torch.eye(3)
     t = torch.zeros(3)
     rmsd_val, R_opt, t_opt = kabsch(A, A)
-    print(rmsd_val)
-    print(R_opt)
-    print(t_opt)
     self.assertTrue(torch.allclose(R_opt, R, atol=1e-5, rtol=1e-8),
                     f'Rotation matrix is not identical: {R_opt}')
     self.assertTrue(torch.allclose(t_opt, t, atol=1e-5, rtol=1e-8),
@@ -199,6 +196,26 @@ class TestKabsch(unittest.TestCase):
 
 
 class TestRMSD(unittest.TestCase):
+
+  def test_rmsd_should_raise_error_if_shapes_are_different(self):
+    first = Protein('first', chains=[
+      Chain('A', residues=[
+        Residue(1, code='G', atoms=[Atom(code='CA', symbol='C', coords=(1., 2., 2.))]),
+        Residue(2, code='A', atoms=[Atom(code='CA', symbol='C', coords=(2., 1., -1.))]),
+        Residue(3, code='A', atoms=[Atom(code='CA', symbol='C', coords=(-1., 1., -1.))]),
+        Residue(4, code='A', atoms=[Atom(code='CA', symbol='C', coords=(-2., 2., 3.))])
+      ])
+    ])
+    second = Protein('first', chains=[
+      Chain('A', residues=[
+        Residue(1, code='G', atoms=[Atom(code='CA', symbol='C', coords=(1., 2., 2.))]),
+        Residue(2, code='A', atoms=[Atom(code='CA', symbol='C', coords=(2., 1., -1.))]),
+        Residue(4, code='A', atoms=[Atom(code='CA', symbol='C', coords=(-2., 2., 3.))])
+      ])
+    ])
+    with self.assertRaises(ValueError):
+      rmsd(first, second)
+
   def test_rmsd_one_vs_one_on_same_protein(self):
     first = Protein('first', chains=[
       Chain('A', residues=[
@@ -229,6 +246,16 @@ class TestRMSD(unittest.TestCase):
     first = read_from_pdb(first_pdb)
     second = read_pdb_folder(second_list_pdb)
     rmsd_val, R, t = rmsd(first, second, device=TEST_GPU)
+    self.assertEqual(torch.Size([len(second)]), rmsd_val.shape, 'Invalid RMSD shape')
+    self.assertEqual(torch.Size([len(second), 3, 3]), R.shape, 'Invalid Rotation matrix shape')
+    self.assertEqual(torch.Size([len(second), 3]), t.shape, 'Invalid translation vector shape')
+
+  def test_rmsd_shape_for_all_vs_one(self):
+    first_pdb = f'{RESOURCES_ROOT}/rmsd_test/orig.pdb'
+    second_list_pdb = f'{RESOURCES_ROOT}/rmsd_test'
+    first = read_from_pdb(first_pdb)
+    second = read_pdb_folder(second_list_pdb)
+    rmsd_val, R, t = rmsd(second, first, device=TEST_GPU)
     self.assertEqual(torch.Size([len(second)]), rmsd_val.shape, 'Invalid RMSD shape')
     self.assertEqual(torch.Size([len(second), 3, 3]), R.shape, 'Invalid Rotation matrix shape')
     self.assertEqual(torch.Size([len(second), 3]), t.shape, 'Invalid translation vector shape')
