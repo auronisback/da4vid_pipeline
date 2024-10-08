@@ -61,7 +61,7 @@ class Residue:
     if code is not None:
       self.set_code(code)
     self.atoms = atoms if atoms is not None else []
-    for atom in self.atoms:  # Adding residues to atom
+    for atom in self.atoms:  # Adding residue to atoms
       atom.residue = self
     self.props = props if props is not None else {}  # Generic properties of this residue
 
@@ -176,11 +176,15 @@ class Protein:
     self.name = name
     self.filename = filename  # Sequence or PDB file
     self.chains = chains if chains is not None else []
+    # Linking chains to this protein
+    for chain in self.chains:
+      chain.protein = self
     self.props = props if props is not None else {}
     self.device = device
     self.__sequence = None  # Cache for sequence
     self.__coords = None  # Cache for coordinates
-    self.__rog = None  # Cache for Radius of Gyration
+    self.__rog = None  # Cache for Radius of Gyration (NOTE: is this needed?)
+    self.__ca_coords = None  # Cache for coordinates of C-alpha atoms
 
   def sequence(self, separator: str = '') -> str:
     """
@@ -230,3 +234,20 @@ class Protein:
     :return: The number of AAs in the whole protein
     """
     return sum([len(chain.residues) for chain in self.chains])
+
+  def ca_coords(self) -> torch.Tensor:
+    """
+    Returns the coordinate tensor of all C-alphas atoms in the
+    whole protein.
+    :return: A torch.Tensor with the coordinates of all C-alpha
+             atoms
+    """
+    if self.__ca_coords is None:
+      ca_coords = []
+      for chain in self.chains:
+        for resi in chain.residues:
+          for atom in resi.atoms:
+            if atom.code == 'CA':
+              ca_coords.append([*atom.coords])
+      self.__ca_coords = torch.tensor(ca_coords)
+    return self.__ca_coords

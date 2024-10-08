@@ -193,6 +193,27 @@ class ProteinTest(unittest.TestCase):
     with self.assertRaises(ValueError):
       protein.get_chain('C')
 
+  def test_protein_ca_coordinates(self):
+    protein = Protein('DEM0')
+    chain_A = Chain('A', residues=Residues.from_sequence('CC'), protein=protein)
+    chain_B = Chain('B', residues=Residues.from_sequence('AA'), protein=protein)
+    protein.chains = [chain_A, chain_B]
+    chain_A.residues[0].atoms = [Atom(residue=chain_A.residues[0], code='CA', symbol='C', coords=(1, 0, 0)),
+                                 Atom(residue=chain_A.residues[0], symbol='N', coords=(0, 1, 0))]
+    chain_A.residues[1].atoms = [Atom(residue=chain_A.residues[1], code='CA', symbol='C', coords=(0, 0, 1))]
+    chain_B.residues[0].atoms = [Atom(residue=chain_B.residues[0], symbol='H', coords=(-1, 0, 0)),
+                                 Atom(residue=chain_B.residues[0], code='CA', coords=(0, -1, 0))]
+    chain_B.residues[1].atoms = [Atom(residue=chain_B.residues[1], code='CA', symbol='C', coords=(0, 0, -1))]
+    ca_coords = protein.ca_coords()
+    ground_truth = torch.tensor([
+      [1, 0, 0],
+      [0, 0, 1],
+      [0, -1, 0],
+      [0, 0, -1]
+    ])
+    self.assertEqual(torch.Size([4, 3]), ca_coords.shape, 'Invalid CA shape')
+    torch.testing.assert_close(ground_truth, ca_coords, msg='CA coords are not close enough')
+
 
 if __name__ == '__main__':
   unittest.main()
