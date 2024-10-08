@@ -20,13 +20,16 @@ def evaluate_plddt(proteins: Union[Protein, List[Protein]], device: str = 'cpu')
     proteins = [proteins]
   proteins_plddt = []
   for protein in proteins:
-    resi_plddt = []
-    for chain in protein.chains:
-      for resi in chain.residues:
-        if 'plddt' not in resi.props:  # Evaluating mean pLDDT for residue by its atoms
-          atoms_plddt = (torch.tensor([atom.props['plddt'] for atom in resi.atoms if 'plddt' in atom.props]).
-                         to(device))
-          resi.props['plddt'] = atoms_plddt.nanmean().item()
-        resi_plddt.append(resi.props['plddt'])
-    proteins_plddt.append(torch.nanmean(torch.tensor(resi_plddt).to(device)))
+    if 'plddt' in protein.props:
+      proteins_plddt.append(protein.props['plddt'])
+    else:
+      resi_plddt = []
+      for chain in protein.chains:
+        for resi in chain.residues:
+          if 'plddt' not in resi.props:  # Evaluating mean pLDDT for residue by its atoms
+            atoms_plddt = (torch.tensor([atom.props['plddt'] for atom in resi.atoms if 'plddt' in atom.props]).
+                           to(device))
+            resi.props['plddt'] = atoms_plddt.nanmean().item()
+          resi_plddt.append(resi.props['plddt'])
+      proteins_plddt.append(torch.nanmean(torch.tensor(resi_plddt).to(device)))
   return torch.stack(proteins_plddt).squeeze()

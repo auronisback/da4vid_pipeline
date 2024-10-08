@@ -1,21 +1,37 @@
 import math
 from typing import List, Dict
 
-from da4vid.metrics import rog, count_secondary_structures
+import torch
+
+from da4vid.metrics import rog, count_secondary_structures, evaluate_plddt
 from da4vid.model import Protein
 
 
-def __check_cutoff(cutoff: int, percentage: bool):
+def __check_cutoff(cutoff: float, percentage: bool):
   if cutoff < 0:
     raise ValueError(f'Invalid cutoff: {cutoff}')
   if percentage and cutoff > 100:
     raise ValueError(f'Invalid percentage cutoff: {cutoff}')
 
 
-def filter_by_rog(proteins: List[Protein], cutoff: int = None, percentage: bool = False,
-                  threshold: float = math.inf, device: str = 'cpu'):
+def filter_by_rog(proteins: List[Protein], cutoff: float = None, percentage: bool = False,
+                  threshold: float = math.inf, device: str = 'cpu') -> List[Protein]:
+  """
+  Filters proteins by their Radii of Gyration (in ascending order) and/or
+  a threshold on such radii.
+  :param proteins: The list of proteins to filter
+  :param cutoff: An absolute or relative (according to the percentage parameter)
+                 number of proteins which will be retained
+  :param percentage: Flag to check whether the cutoff is absolute or a percentage
+  :param threshold: The threshold over which the proteins are discarded
+  :param device: The device on which execute the RoG algorithm
+  :return: The list of filtered proteins
+  :raise ValueError: if the threshold is negative or the cutoff is invalid
+  """
+  if threshold < 0:
+    raise ValueError(f'given RoG threshold is negative: {threshold}')
   if cutoff is None:
-    cutoff = len(proteins) if not percentage else 100
+    cutoff = len(proteins) if not percentage else 100.
   __check_cutoff(cutoff, percentage)
   without_rog = [protein for protein in proteins if 'rog' not in protein.props.keys()]
   # Evaluating rog for missing proteins
@@ -26,10 +42,22 @@ def filter_by_rog(proteins: List[Protein], cutoff: int = None, percentage: bool 
   return filtered[:num_retained]
 
 
-def filter_by_ss(proteins: List[Protein], cutoff: int = None, percentage: bool = False,
-                 threshold: int = 0, device: str = 'cpu'):
+def filter_by_ss(proteins: List[Protein], cutoff: float = None, percentage: bool = False,
+                 threshold: int = 0, device: str = 'cpu') -> List[Protein]:
+  """
+  Filters a list of proteins by their number of secondary structures and/or
+  a specific threshold on the number of SSs.
+  :param proteins: The list of proteins to filter
+  :param cutoff: The absolute or relative number (according to percentage param)
+                 to filter proteins, in descending order of SSs number
+  :param percentage: Flag to check if cutoff is absolute or a percentage
+  :param threshold: The SSs number threshold under which the proteins are discarded
+  :param device: The device on which evaluate the inner DSSP algorithm
+  :return: The filtered list of proteins
+  :raise ValueError: if the threshold is negative, or the cutoff is invalid
+  """
   if cutoff is None:
-    cutoff = len(proteins) if not percentage else 100
+    cutoff = len(proteins) if not percentage else 100.
   __check_cutoff(cutoff, percentage)
   __add_ss_props(proteins, device)
   filtered = list(filter(lambda p: p.props['ss'] >= threshold, proteins))
@@ -50,6 +78,7 @@ def cluster_by_ss(proteins: List[Protein], threshold: int = 0,
   :param device: The device on which run the SS prediction algorithm
   :return: A dictionary whose keys are the number of secondary structures
            and values are lists of proteins with that specific number of SSs
+  :raise ValueError: if the threshold is negative, or the cutoff is invalid
   """
   if threshold < 0:
     raise ValueError(f'Invalid threshold: {threshold}')
@@ -69,3 +98,39 @@ def __add_ss_props(proteins: List[Protein], device: str = 'cpu'):
   # Adding 'ss' prop to proteins
   for ss, protein in zip(ss_num, proteins):
     protein.props['ss'] = ss
+
+
+def filter_by_plddt(proteins: List[Protein], cutoff: float = None, percentage: bool = False,
+                    threshold: float = 0, device: str = 'cpu'):
+  """
+  Filters a list of proteins according to the pLDDT values for the
+  proteins. It needs the "plddt" prop assigned to the protein or to
+  residues/atoms in the protein. In this case, the average protein pLDDT
+  is evaluated.
+  :param proteins: The list of proteins to filter
+  :param cutoff: The absolute or relative (according to the percentage parameter)
+                 number of retained proteins
+  :param percentage: Flag to check whether cutoff is absolute or a percentage
+  :param threshold: The threshold below which a protein is discarded
+  :param device: The device on which average the pLDDT if needed
+  :return: The list of filtered proteins
+  :raise ValueError: if either the cutoff or the threshold are invalid
+  :raise AttributeError: if any of the proteins has a pLDDT score equal to NaN
+  """
+  if threshold < 0:
+    raise ValueError(f'Invalid pLDDT threshold: {threshold}')
+  if cutoff is None:
+    cutoff = len(proteins) if not percentage else 100.
+  __check_cutoff(cutoff, percentage)
+  if not proteins:
+    return []
+  proteins_plddt = evaluate_plddt(proteins, device)
+  if torch.any(torch.isnan(proteins_plddt)):
+    raise AttributeError('at least one protein has a NaN pLDDT score')
+  for protein, plddt in zip(proteins, proteins_plddt):
+    protein.props['plddt'] = plddt.item()
+  filtered = list(filter(lambda p: p.props['plddt'] >= threshold, proteins))
+  filtered.sort(key=lambda p: p.props['plddt'], reverse=True)
+  num_retained = int(cutoff*len(proteins)/100) if percentage else cutoff
+  return filtered[:num_retained]
+

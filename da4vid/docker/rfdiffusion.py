@@ -223,11 +223,11 @@ class RFdiffusionContainer(BaseContainer):
   def run(self, input_pdb, contig_map: RFdiffusionContigMap, partial_T: int = 20,
           potentials: RFdiffusionPotentials = None,
           client: DockerClient = None) -> bool:
-    self.commands = [self.__create_commands(input_pdb, contig_map, potentials, partial_T)]
+    self.commands = [self.__create_command(input_pdb, contig_map, potentials, partial_T)]
     return super()._run_container(client)
 
-  def __create_commands(self, input_pdb, contig_map: RFdiffusionContigMap,
-                        potentials: RFdiffusionPotentials, partial_T: int) -> str:
+  def __create_command(self, input_pdb, contig_map: RFdiffusionContigMap,
+                       potentials: RFdiffusionPotentials, partial_T: int) -> str:
     cmd = f'python {RFdiffusionContainer.SCRIPT_LOCATION}'
     pdb_name = os.path.basename(input_pdb).split('.')[0]
     pdb_path = f'{RFdiffusionContainer.INPUT_DIR}/{pdb_name}.pdb'
