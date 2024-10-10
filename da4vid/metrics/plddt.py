@@ -31,5 +31,8 @@ def evaluate_plddt(proteins: Union[Protein, List[Protein]], device: str = 'cpu')
                            to(device))
             resi.props['plddt'] = atoms_plddt.nanmean().item()
           resi_plddt.append(resi.props['plddt'])
-      proteins_plddt.append(torch.nanmean(torch.tensor(resi_plddt).to(device)))
+      mean_plddt = torch.nanmean(torch.tensor(resi_plddt).to(device))
+      proteins_plddt.append(mean_plddt)
+      # Adding pLDDT to protein
+      protein.props['plddt'] = mean_plddt
   return torch.stack(proteins_plddt).squeeze()
