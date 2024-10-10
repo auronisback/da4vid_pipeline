@@ -1,5 +1,6 @@
 import os
 import shutil
+from termcolor import colored
 
 import docker
 
@@ -9,7 +10,7 @@ from da4vid.docker.rfdiffusion import RFdiffusionContainer, RFdiffusionContigMap
 from da4vid.filters import filter_by_rog, cluster_by_ss, filter_by_plddt
 from da4vid.io import read_protein_mpnn_fasta
 from da4vid.io.pdb_io import read_from_pdb, read_pdb_folder
-from da4vid.metrics import evaluate_plddt, evaluate_rmsd
+from da4vid.metrics import evaluate_rmsd
 from da4vid.model import Protein
 
 client = docker.from_env()
@@ -22,11 +23,13 @@ epitope = (26, 34)
 # Printing epitope data in order to start
 protein = read_from_pdb(protein_file)
 sequence = protein.sequence()
-print('Selected sequence and \033[91mepitope\033[0m:')
-print(sequence[:epitope[0]] + '\033[91m' + sequence[epitope[0]:epitope[1]+1] + '\033[0m' + sequence[epitope[1]+1:])
+print(f'Selected sequence and {colored("epitope", "red")}:')
+print(sequence[:epitope[0]]
+      + colored(sequence[epitope[0]:epitope[1]+1], 'red', attrs=['bold'])
+      + sequence[epitope[1]+1:])
+
 
 # Running RFdiffusion
-
 rfd_model_dir = '/home/user/rfdiffusion_models'
 rfd_input_dir = '/home/user/da4vid/pipeline_demo/run1/rfdiffusion/inputs'
 rfd_output_dir = '/home/user/da4vid/pipeline_demo/run1/rfdiffusion/outputs'
@@ -53,7 +56,7 @@ rfdiff = RFdiffusionContainer(
 )
 contig_map = RFdiffusionContigMap(protein).full_diffusion().add_provide_seq(*epitope)
 potentials = RFdiffusionPotentials(guiding_scale=10).add_monomer_contacts(5).add_rog(12).linear_decay()
-#rfdiff.run(input_pdb=protein_name, contig_map=contig_map, potentials=potentials, partial_T=rfd_timesteps, client=client)
+rfdiff.run(input_pdb=protein_name, contig_map=contig_map, potentials=potentials, partial_T=rfd_timesteps, client=client)
 
 
 # First round of filtering on backbones
@@ -103,7 +106,7 @@ os.makedirs(pmpnn_output_dir, exist_ok=True)
 pmpnn = ProteinMPNNContainer(input_dir=pmpnn_input_dir, output_dir=pmpnn_output_dir,
                              seqs_per_target=seqs_per_target, sampling_temp=sampling_temp,
                              backbone_noise=backbone_noise)
-#pmpnn.run(client)
+pmpnn.run(client)
 
 # Loading new proteins from FASTAs
 sequenced = {}
@@ -145,7 +148,7 @@ omegafold = OmegaFoldContainer(
 omegafold.run(num_cycle=omegafold_recycles, device=omegafold_device, client=client)
 
 # Renaming OmegaFold outputs
-run1_outputs = '/home/user/da4vid/pipeline_demo/run_1/outputs'
+run1_outputs = '/home/user/da4vid/pipeline_demo/run1/outputs'
 os.makedirs(run1_outputs, exist_ok=True)
 
 for d in os.listdir(omegafold_outputs):
@@ -184,7 +187,6 @@ for d in os.listdir(omegafold_outputs):
     orig_name = d
     orig_protein = sequenced[orig_name]['original']
     samples = read_pdb_folder(os.path.join(run1_outputs, d), b_fact_prop='plddt')
-    # Discarding the original protein prediction (as it is only the backbone)
     # Adding atom and coordinates to FASTAs
     for s in samples:
       seq = __merge_sequence_with_structure(sequenced[orig_name]['sampled'][s.name], s)
@@ -198,6 +200,6 @@ for s in sequenced.values():
 
 # Filtering by pLDDT values
 plddt_filtered = filter_by_plddt([p for s in sequenced.values() for p in s['sampled'].values()], threshold=70)
-plddt_filtered.sort(key=lambda p: p.props['rmsd'])
+plddt_filtered.sort(key=lambda s: s.props['rmsd'])
 print(f'Filtered {len(plddt_filtered)} designs by pLDDT value >= 70:')
 print([(p.name, p.props['plddt'], p.props['rmsd']) for p in plddt_filtered])

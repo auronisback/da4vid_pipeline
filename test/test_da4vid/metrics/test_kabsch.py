@@ -7,7 +7,7 @@ from da4vid.io import read_from_pdb, read_pdb_folder
 from da4vid.model import Protein, Chain, Residue, Atom
 from test.cfg import RESOURCES_ROOT, TEST_GPU
 
-from da4vid.metrics.kabsch import kabsch, rmsd
+from da4vid.metrics.kabsch import kabsch, evaluate_rmsd
 
 
 class TestKabsch(unittest.TestCase):
@@ -214,7 +214,7 @@ class TestRMSD(unittest.TestCase):
       ])
     ])
     with self.assertRaises(ValueError):
-      rmsd(first, second)
+      evaluate_rmsd(first, second)
 
   def test_rmsd_one_vs_one_on_same_protein(self):
     first = Protein('first', chains=[
@@ -225,7 +225,7 @@ class TestRMSD(unittest.TestCase):
         Residue(4, code='A', atoms=[Atom(code='CA', symbol='C', coords=(-2., 2., 3.))])
       ])
     ])
-    rmsd_val, R, t = rmsd(first, first, device=TEST_GPU)
+    rmsd_val, R, t = evaluate_rmsd(first, first, device=TEST_GPU)
     torch.testing.assert_close(torch.tensor([0.]).squeeze().to(TEST_GPU), rmsd_val, atol=1e-5, rtol=1e-6)
     torch.testing.assert_close(torch.eye(3).to(TEST_GPU), R)
     torch.testing.assert_close(torch.zeros(3).to(TEST_GPU), t)
@@ -235,7 +235,7 @@ class TestRMSD(unittest.TestCase):
     second_pdb = f'{RESOURCES_ROOT}/rmsd_test/sample_1000.pdb'
     first = read_from_pdb(first_pdb)
     second = read_from_pdb(second_pdb)
-    rmsd_val, R, t = rmsd(first, second, device=TEST_GPU)
+    rmsd_val, R, t = evaluate_rmsd(first, second, device=TEST_GPU)
     self.assertEqual(0, rmsd_val.squeeze().ndim, 'Returned RMSD is not scalar')
     self.assertEqual(torch.Size([3, 3]), R.shape, 'Rotation matrix shape does not match')
     self.assertEqual(torch.Size([3]), t.shape, 'Translation vector shape does not match')
@@ -245,7 +245,7 @@ class TestRMSD(unittest.TestCase):
     second_list_pdb = f'{RESOURCES_ROOT}/rmsd_test'
     first = read_from_pdb(first_pdb)
     second = read_pdb_folder(second_list_pdb)
-    rmsd_val, R, t = rmsd(first, second, device=TEST_GPU)
+    rmsd_val, R, t = evaluate_rmsd(first, second, device=TEST_GPU)
     self.assertEqual(torch.Size([len(second)]), rmsd_val.shape, 'Invalid RMSD shape')
     self.assertEqual(torch.Size([len(second), 3, 3]), R.shape, 'Invalid Rotation matrix shape')
     self.assertEqual(torch.Size([len(second), 3]), t.shape, 'Invalid translation vector shape')
@@ -255,7 +255,7 @@ class TestRMSD(unittest.TestCase):
     second_list_pdb = f'{RESOURCES_ROOT}/rmsd_test'
     first = read_from_pdb(first_pdb)
     second = read_pdb_folder(second_list_pdb)
-    rmsd_val, R, t = rmsd(second, first, device=TEST_GPU)
+    rmsd_val, R, t = evaluate_rmsd(second, first, device=TEST_GPU)
     self.assertEqual(torch.Size([len(second)]), rmsd_val.shape, 'Invalid RMSD shape')
     self.assertEqual(torch.Size([len(second), 3, 3]), R.shape, 'Invalid Rotation matrix shape')
     self.assertEqual(torch.Size([len(second), 3]), t.shape, 'Invalid translation vector shape')
@@ -264,7 +264,7 @@ class TestRMSD(unittest.TestCase):
     first = [read_from_pdb(f'{RESOURCES_ROOT}/rmsd_test/orig.pdb'),
              read_from_pdb(f'{RESOURCES_ROOT}/rmsd_test/sample_1008.pdb')]
     second = read_pdb_folder(f'{RESOURCES_ROOT}/rmsd_test')
-    rmsd_val, R, t = rmsd(first, second, device=TEST_GPU)
+    rmsd_val, R, t = evaluate_rmsd(first, second, device=TEST_GPU)
     self.assertEqual(torch.Size([len(first), len(second)]), rmsd_val.shape,
                      'Invalid RMSD shape')
     self.assertEqual(torch.Size([len(first), len(second), 3, 3]), R.shape,

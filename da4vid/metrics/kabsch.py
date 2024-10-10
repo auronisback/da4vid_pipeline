@@ -5,8 +5,8 @@ import torch
 from da4vid.model import Protein
 
 
-def rmsd(first: Union[Protein, List[Protein]], second: Union[Protein, List[Protein]],
-         device: str = 'cpu') -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+def evaluate_rmsd(first: Union[Protein, List[Protein]], second: Union[Protein, List[Protein]],
+                  device: str = 'cpu') -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
   """
   Evaluates the Root Mean Square Deviation (RMSD), the rotation matrix and
   the translation vector between sets of proteins. If both first and second

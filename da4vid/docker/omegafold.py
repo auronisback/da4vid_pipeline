@@ -15,7 +15,6 @@ class OmegaFoldContainer(BaseContainer):
     super().__init__(
       image='ameg/omegafold:latest',
       entrypoint='/bin/bash',
-      commands='nvidia-smi',
       with_gpus=True,
       volumes={
         model_dir: OmegaFoldContainer.MODELS_FOLDER,
