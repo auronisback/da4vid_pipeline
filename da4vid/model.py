@@ -114,6 +114,7 @@ class Residues(abc.ABC):
   """
   Utility class to obtain residues list
   """
+
   @staticmethod
   def from_sequence(sequence: str) -> List[Residue]:
     """
@@ -128,6 +129,7 @@ class Chain:
   """
   Models a Chain in a protein.
   """
+
   def __init__(self, name: str = None, protein=None, residues: List[Residue] = None, device: str = 'cpu'):
     self.name = name
     self.protein = protein
@@ -171,6 +173,7 @@ class Protein:
   """
   Models a Protein.
   """
+
   def __init__(self, name, filename: str = None,
                chains: List[Chain] = None, props: Dict[str, Any] = None, device: str = 'cpu'):
     self.name = name
@@ -208,7 +211,12 @@ class Protein:
       self.__coords = torch.cat([chain.coords() for chain in self.chains])
     return self.__coords
 
-  def get_atom_symbols(self):
+  def get_atom_symbols(self) -> List[str]:
+    """
+    Gets the list of all atom symbols in this protein.
+    :return: The list of atom symbols, in the order they
+             appear in chains and residues
+    """
     atom_symbols = []
     for chain in self.chains:
       for residue in chain.residues:
@@ -217,12 +225,25 @@ class Protein:
     return atom_symbols
 
   def has_chain(self, name: str) -> bool:
+    """
+    Checks if the protein has a chain with the specified name.
+    :param name: The name of the searched chain
+    :return: True if this protein has a chain with the input
+             name, False otherwise
+    """
     for chain in self.chains:
       if chain.name == name:
         return True
     return False
 
   def get_chain(self, name: str) -> Chain:
+    """
+    Gets a chain with a specific name from the protein.
+    :param name: The name of searched chain
+    :return: The chain in the protein with the given name
+    :raise ValueError: If no chain with the given name is
+                       present in the protein
+    """
     for chain in self.chains:
       if chain.name == name:
         return chain
@@ -251,3 +272,45 @@ class Protein:
               ca_coords.append([*atom.coords])
       self.__ca_coords = torch.tensor(ca_coords)
     return self.__ca_coords
+
+
+class Proteins:
+  """
+  Class providing utilities for proteins.
+  """
+
+  @staticmethod
+  def merge_sequence_with_structure(seq: Protein, struct: Protein) -> Protein:
+    """
+    Merges two proteins, taking the sequence from the first one and the
+    structure of the second, merging also their properties.
+    :param seq: The protein used to retain the sequence
+    :param struct: The protein used to obtain atoms structure
+    :return: The seq protein with atom coordinates and props
+             linked from the struct protein
+    :raise Error: If the chains and number of residues of the seq protein
+                  does not match with the corresponding values of the
+                  struct protein
+    """
+    Proteins.__check_seq_and_struct_coherence(seq, struct)
+    # Adding props
+    seq.props = seq.props | struct.props
+    # Adding atoms and coordinates
+    for chain_seq in seq.chains:
+      chain_struct = struct.get_chain(chain_seq.name)
+      for resi_seq, resi_struct in zip(chain_seq.residues, chain_struct.residues):
+        resi_seq.atoms = []
+        for atom in resi_struct.atoms:
+          atom.residue = resi_seq
+          resi_seq.atoms.append(atom)
+    return seq
+
+  @staticmethod
+  def __check_seq_and_struct_coherence(seq: Protein, struct: Protein) -> None:
+    if not all([struct.has_chain(c.name) for c in seq.chains]):
+      raise ValueError('chains mismatch between sequence and structure protein')
+    for chain_seq in seq.chains:
+      chain_struct = struct.get_chain(chain_seq.name)
+      if len(chain_seq.residues) != len(chain_struct.residues):
+        raise ValueError(f'chain {chain_seq.name} has a different number'
+                         f' of residues between sequence and structure protein')

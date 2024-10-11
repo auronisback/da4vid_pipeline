@@ -11,7 +11,7 @@ from da4vid.filters import filter_by_rog, cluster_by_ss, filter_by_plddt
 from da4vid.io import read_protein_mpnn_fasta
 from da4vid.io.pdb_io import read_from_pdb, read_pdb_folder
 from da4vid.metrics import evaluate_rmsd
-from da4vid.model import Protein
+from da4vid.model import Proteins
 
 client = docker.from_env()
 
@@ -165,20 +165,6 @@ for d in os.listdir(omegafold_outputs):
         shutil.copy2(src_name, dest_name)
 
 
-def __merge_sequence_with_structure(seqs: Protein, struct: Protein) -> Protein:
-  # Adding props
-  seqs.props = seqs.props | struct.props
-  # Adding atoms and coordinates
-  for chain_seq in seqs.chains:
-    chain_struct = struct.get_chain(chain_seq.name)
-    for resi_seq, resi_struct in zip(chain_seq.residues, chain_struct.residues):
-      resi_seq.atoms = []
-      for atom in resi_struct.atoms:
-        atom.residue = resi_seq
-        resi_seq.atoms.append(atom)
-  return seqs
-
-
 # Retrieving first run predictions
 print('Retrieving Omegafold predictions')
 for d in os.listdir(omegafold_outputs):
@@ -189,7 +175,7 @@ for d in os.listdir(omegafold_outputs):
     samples = read_pdb_folder(os.path.join(run1_outputs, d), b_fact_prop='plddt')
     # Adding atom and coordinates to FASTAs
     for s in samples:
-      seq = __merge_sequence_with_structure(sequenced[orig_name]['sampled'][s.name], s)
+      seq = Proteins.merge_sequence_with_structure(sequenced[orig_name]['sampled'][s.name], s)
 
 # Evaluating RMSD w.r.t. the original backbone
 for s in sequenced.values():

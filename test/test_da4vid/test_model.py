@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from da4vid.model import Residue, Chain, Residues, Protein, Atom
+from da4vid.model import Residue, Chain, Residues, Protein, Atom, Proteins
 
 
 class ResidueTest(unittest.TestCase):
@@ -213,6 +213,74 @@ class ProteinTest(unittest.TestCase):
     ])
     self.assertEqual(torch.Size([4, 3]), ca_coords.shape, 'Invalid CA shape')
     torch.testing.assert_close(ground_truth, ca_coords, msg='CA coords are not close enough')
+
+
+class ProteinsTest(unittest.TestCase):
+  def test_merge_proteins_with_different_chains_raise_error(self):
+    seq = Protein('DEM01', chains=[
+      Chain('A', residues=Residues.from_sequence('CC')),
+      Chain('B', residues=Residues.from_sequence('AAY'))
+    ])
+    struct = Protein('DEMO2', chains=[
+      Chain('A', residues=[
+        Residue(1, 'G', atoms=[
+          Atom(code='CA', symbol='C', coords=(1, 0, 0)),
+          Atom(symbol='N', coords=(0, 1, 0))
+        ])
+      ]),
+      Chain('C', residues=[
+        Residue(2, 'Y', atoms=[
+          Atom(code='CA', symbol='C', coords=(0, 0, 1))
+        ])
+      ])
+    ])
+    with self.assertRaises(ValueError):
+      Proteins.merge_sequence_with_structure(seq, struct)
+
+  def test_merge_proteins_with_different_residue_numbers_raise_error(self):
+    seq = Protein('DEM01', chains=[
+      Chain('A', residues=Residues.from_sequence('CC')),
+    ])
+    struct = Protein('DEMO2', chains=[
+      Chain('A', residues=[
+        Residue(1, 'G', atoms=[
+          Atom(code='CA', symbol='C', coords=(1, 0, 0)),
+          Atom(symbol='N', coords=(0, 1, 0))
+        ])
+      ])
+    ])
+    with self.assertRaises(ValueError):
+      Proteins.merge_sequence_with_structure(seq, struct)
+      
+  def test_merge_proteins(self):
+    seq = Protein('DEM01', chains=[
+      Chain('A', residues=Residues.from_sequence('CC')),
+      Chain('B', residues=Residues.from_sequence('A')),
+    ], props={'foo': 'bar'})
+    struct = Protein('DEMO2', chains=[
+      Chain('A', residues=[
+        Residue(1, 'G', atoms=[
+          Atom(code='CA', symbol='C', coords=(1, 0, 0)),
+          Atom(symbol='N', coords=(0, 1, 0))
+        ]),
+        Residue(2, 'K', atoms=[
+          Atom(code='CA', symbol='C', coords=(1, -1, 1))
+        ])
+      ]),
+      Chain('B', residues=[
+        Residue(3, 'Y', atoms=[
+          Atom(code='CA', symbol='C', coords=(0, 0, 1))
+        ])
+      ])
+    ], props={'bar': 'baz'})
+    seq = Proteins.merge_sequence_with_structure(seq, struct)
+    for seq_chain, struct_chain in zip(seq.chains, struct.chains):
+      for seq_residue, struct_residue in zip(seq_chain.residues, struct_chain.residues):
+        self.assertEqual(len(struct_residue.atoms), len(seq_residue.atoms),
+                         f'Invalid number of atoms for chain {seq_chain.name} and residue {seq_residue.number}')
+        self.assertEqual([a.coords for a in seq_residue.atoms], [a.coords for a in struct_residue.atoms],
+                         f'Invalid atom coordinates for chain {seq_chain.name} and residue {seq_residue.number}')
+    self.assertDictEqual({'foo':'bar', 'bar':'baz'}, seq.props, 'Invalid merged props')
 
 
 if __name__ == '__main__':
