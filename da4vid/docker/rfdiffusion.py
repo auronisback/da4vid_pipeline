@@ -86,7 +86,7 @@ class RFdiffusionContigMap:
     n_resi = self.protein.length()
     if start >= n_resi or end >= n_resi:
       raise ValueError(f'starting or ending greater than number of residues in the chain: {start}, {end} vs {n_resi}')
-    self.provide_seq.append((start, end))
+    self.provide_seq.append((start - 1, end - 1))  # Provide seq starts from 0
     return self
 
   def full_diffusion(self) -> Self:

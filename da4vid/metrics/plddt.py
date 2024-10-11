@@ -21,7 +21,9 @@ def evaluate_plddt(proteins: Union[Protein, List[Protein]], device: str = 'cpu')
   proteins_plddt = []
   for protein in proteins:
     if 'plddt' in protein.props:
-      proteins_plddt.append(protein.props['plddt'])
+      proteins_plddt.append(protein.props['plddt']
+                            if isinstance(protein.props['plddt'], torch.Tensor)
+                            else torch.tensor(protein.props['plddt']))
     else:
       resi_plddt = []
       for chain in protein.chains:

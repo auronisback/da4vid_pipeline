@@ -18,7 +18,7 @@ client = docker.from_env()
 # Input protein properties
 protein_name = 'demo_input'
 protein_file = '/home/user/da4vid/pipeline_demo/demo_input.pdb'
-epitope = (26, 34)
+epitope = (27, 35)
 
 # Printing epitope data in order to start
 protein = read_from_pdb(protein_file)
@@ -34,7 +34,7 @@ run1_conf = {
     'model_dir': '/home/user/rfdiffusion_models',
     'input_dir': '/home/user/da4vid/pipeline_demo/run1/rfdiffusion/inputs',
     'output_dir': '/home/user/da4vid/pipeline_demo/run1/rfdiffusion/outputs',
-    'num_designs': 10,
+    'num_designs': 2000,
     'partial_T': 23
   },
   'backbone_filtering': {
@@ -45,9 +45,9 @@ run1_conf = {
   'proteinmpnn': {
     'input_dir': '/home/user/da4vid/pipeline_demo/run1/protein_mpnn/inputs',
     'output_dir': '/home/user/da4vid/pipeline_demo/run1/protein_mpnn/outputs',
-    'seqs_per_target': 20,
+    'seqs_per_target': 2000,
     'sampling_temp': .5,
-    'backbone_noise': .20,
+    'backbone_noise': .20
   },
   'omegafold': {
     'model_dir': '/home/user/.cache/omegafold_ckpt',
@@ -56,6 +56,9 @@ run1_conf = {
     'num_recycles': 5,
     'model_weights': "2",
     'device': 'cuda:0',
+  },
+  'sequence_filtering': {
+    'plddt_threshold': 70.
   },
   'output_folder': '/home/user/da4vid/pipeline_demo/run1/outputs'
 }
@@ -75,7 +78,7 @@ rfdiff = RFdiffusionContainer(**run1_conf['rfdiffusion'])
 
 contig_map = RFdiffusionContigMap(protein).full_diffusion().add_provide_seq(*epitope)
 potentials = RFdiffusionPotentials(guiding_scale=10).add_monomer_contacts(5).add_rog(12).linear_decay()
-#rfdiff.run(input_pdb=protein_name, contig_map=contig_map, potentials=potentials, client=client)
+rfdiff.run(input_pdb=protein_name, contig_map=contig_map, potentials=potentials, client=client)
 
 # First round of filtering on backbones
 print('Filtering generated backbones by SS and RoG')
@@ -98,7 +101,6 @@ print(f'Filtered {len(backbones)} proteins by RoG with cutoff {rog_cutoff}{"%" i
 for p in backbones:
   print(f'  {p.name}: {p.props["rog"].item():.3f} A')
 
-
 # Moving filtered PDB files to PMPNN input directory
 os.makedirs(run1_conf['proteinmpnn']['input_dir'], exist_ok=True)
 for protein in backbones:
@@ -114,7 +116,8 @@ print(f'  - sampling temperature: {run1_conf["proteinmpnn"]["sampling_temp"]}')
 print(f'  - backbone noise: {run1_conf["proteinmpnn"]["backbone_noise"]}')
 os.makedirs(run1_conf['proteinmpnn']['output_dir'], exist_ok=True)
 pmpnn = ProteinMPNNContainer(**run1_conf['proteinmpnn'])
-#pmpnn.run(client)
+pmpnn.add_fixed_chain('A', [p for p in range(epitope[0], epitope[1]+1)])
+pmpnn.run(client)
 
 # Loading new proteins from FASTAs
 sequenced = {}
@@ -141,7 +144,7 @@ print(f' - model weights: {run1_conf["omegafold"]["model_weights"]}')
 print(f' - num_recycles: {run1_conf["omegafold"]["num_recycles"]}')
 
 omegafold = OmegaFoldContainer(**run1_conf['omegafold'])
-#omegafold.run(client=client)
+omegafold.run(client=client)
 
 # Renaming OmegaFold outputs in another directory
 run1_omegafold_renamed = '/home/user/da4vid/pipeline_demo/run1/omegafold/renamed'
@@ -179,9 +182,11 @@ for s in sequenced.values():
     p.props['rmsd'] = rmsd_val
 
 # Filtering by pLDDT values
-plddt_filtered = filter_by_plddt([p for s in sequenced.values() for p in s['sampled'].values()], threshold=70)
+plddt_threshold = run1_conf['sequence_filtering']['plddt_threshold']
+plddt_filtered = filter_by_plddt([p for s in sequenced.values() for p in s['sampled'].values()],
+                                 threshold=plddt_threshold)
 plddt_filtered.sort(key=lambda s: s.props['rmsd'])
-print(f'Filtered {len(plddt_filtered)} designs by pLDDT value >= 70:')
+print(f'Filtered {len(plddt_filtered)} designs by pLDDT value >= {plddt_threshold}:')
 print([(p.name, p.filename, p.props['plddt'], p.props['rmsd']) for p in plddt_filtered])
 
 # Copying filtered values to the output folder of first run
@@ -191,3 +196,82 @@ for protein in plddt_filtered:
   protein_basename = os.path.basename(protein.filename)
   shutil.copy2(protein.filename, f'{run1_outputs}/{protein_basename}')
 
+# Second sequence design run
+
+run2_conf = {
+  'proteinmpnn': {
+    'input_dir': run1_conf['output_folder'],
+    'output_dir': '/home/user/da4vid/pipeline_demo/run2/protein_mpnn/outputs',
+    'seqs_per_target': 20,
+    'sampling_temp': .2,
+    'backbone_noise': .0
+  },
+  'omegafold': {
+    'model_dir': '/home/user/.cache/omegafold_ckpt',
+    'input_dir': '/home/user/da4vid/pipeline_demo/run2/omegafold/inputs',
+    'output_dir': '/home/user/da4vid/pipeline_demo/run2/omegafold/outputs',
+    'num_recycles': 5,
+    'model_weights': "2",
+    'device': 'cuda:0',
+  },
+  'sequence_filtering': {
+    'plddt_threshold': 85
+  },
+  'output_dir': '/home/user/da4vid/pipeline_demo/run2/outputs'
+}
+
+# Re-Running ProteinMPNN
+os.makedirs(run2_conf['proteinmpnn']['input_dir'], exist_ok=True)
+os.makedirs(run2_conf['proteinmpnn']['output_dir'], exist_ok=True)
+print('Running ProteinMPNN on previous inputs with parameters:')
+print(f'  - sequences per structure: {run2_conf["proteinmpnn"]["seqs_per_target"]}')
+print(f'  - sampling temperature: {run2_conf["proteinmpnn"]["sampling_temp"]}')
+print(f'  - backbone noise: {run2_conf["proteinmpnn"]["backbone_noise"]}')
+
+pmpnn = ProteinMPNNContainer(**run2_conf['proteinmpnn'])
+pmpnn.add_fixed_chain('A', [p for p in range(epitope[0], epitope[1] + 1)])
+pmpnn.run(client=client)
+
+# Copying PMPNN outputs to OmegaFold directory
+os.makedirs(run2_conf['omegafold']['input_dir'], exist_ok=True)
+os.makedirs(run2_conf['omegafold']['output_dir'], exist_ok=True)
+for f in os.listdir(f'{run2_conf["proteinmpnn"]["output_dir"]}/seqs'):
+  if f.endswith('.fa'):
+    shutil.copy2(f'{run2_conf["proteinmpnn"]["output_dir"]}/seqs/{f}',
+                 f'{run2_conf["omegafold"]["input_dir"]}/{f}')
+
+print('Running OmegaFold for structure prediction')
+print(f' - model weights: {run2_conf["omegafold"]["model_weights"]}')
+print(f' - num_recycles: {run2_conf["omegafold"]["num_recycles"]}')
+
+omegafold = OmegaFoldContainer(**run2_conf['omegafold'])
+omegafold.run(client=client)
+
+
+# Retrieving second run predictions
+print('Retrieving Omegafold predictions')
+run2_omegafold_renamed = '/home/user/da4vid/pipeline_demo/run2/omegafold/renamed'
+for d in os.listdir(run2_conf['omegafold']['output_dir']):
+  # Prediction of sequences in input FASTAs are saved in a folder
+  if os.path.isdir(os.path.join(run2_omegafold_renamed, d)) and d in sequenced.keys():
+    orig_name = d
+    orig_protein = sequenced[orig_name]['original']
+    samples = read_pdb_folder(os.path.join(run2_omegafold_renamed, d), b_fact_prop='plddt')
+    # Adding atom and coordinates to FASTAs
+    for s in samples:
+      seq = Proteins.merge_sequence_with_structure(sequenced[orig_name]['sampled'][s.name], s)
+
+# Evaluating RMSD w.r.t. the original backbone
+for s in sequenced.values():
+  orig_protein = s['original']
+  rmsd_vals, _, _ = evaluate_rmsd(orig_protein, list(s['sampled'].values()))
+  for rmsd_val, p in zip(rmsd_vals, s['sampled'].values()):
+    p.props['rmsd'] = rmsd_val
+
+# Filtering by pLDDT values
+plddt_threshold = run2_conf['sequence_filtering']['plddt_threshold']
+plddt_filtered = filter_by_plddt([p for s in sequenced.values() for p in s['sampled'].values()],
+                                 threshold=plddt_threshold)
+plddt_filtered.sort(key=lambda s: s.props['rmsd'])
+print(f'Filtered {len(plddt_filtered)} designs by pLDDT value >= {plddt_threshold}:')
+print([(p.name, p.filename, p.props['plddt'], p.props['rmsd']) for p in plddt_filtered])
