@@ -253,11 +253,11 @@ class ProteinsTest(unittest.TestCase):
       Proteins.merge_sequence_with_structure(seq, struct)
       
   def test_merge_proteins(self):
-    seq = Protein('DEM01', chains=[
+    seq = Protein('DEM01', filename='demo1.fa', chains=[
       Chain('A', residues=Residues.from_sequence('CC')),
       Chain('B', residues=Residues.from_sequence('A')),
     ], props={'foo': 'bar'})
-    struct = Protein('DEMO2', chains=[
+    struct = Protein('DEMO1', filename='demo1.pdb', chains=[
       Chain('A', residues=[
         Residue(1, 'G', atoms=[
           Atom(code='CA', symbol='C', coords=(1, 0, 0)),
@@ -274,6 +274,7 @@ class ProteinsTest(unittest.TestCase):
       ])
     ], props={'bar': 'baz'})
     seq = Proteins.merge_sequence_with_structure(seq, struct)
+    self.assertEqual(seq.filename, struct.filename, 'Filename not switched')
     for seq_chain, struct_chain in zip(seq.chains, struct.chains):
       for seq_residue, struct_residue in zip(seq_chain.residues, struct_chain.residues):
         self.assertEqual(len(struct_residue.atoms), len(seq_residue.atoms),

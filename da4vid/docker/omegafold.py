@@ -10,8 +10,8 @@ class OmegaFoldContainer(BaseContainer):
   INPUT_DIR = '/Omegafold/run/inputs'
   OUTPUT_DIR = '/Omegafold/run/outputs'
 
-  def __init__(self, model_dir, input_dir, output_dir,
-               running_model: str = "2"):
+  def __init__(self, model_dir, input_dir, output_dir, model_weights: str = "2",
+               num_recycles: int = 5, device: str = 'cpu'):
     super().__init__(
       image='ameg/omegafold:latest',
       entrypoint='/bin/bash',
@@ -26,17 +26,18 @@ class OmegaFoldContainer(BaseContainer):
     self.model_dir = model_dir
     self.input_dir = input_dir
     self.output_dir = output_dir
-    self.model = running_model
+    self.num_recycles = num_recycles
+    self.model_weights = model_weights
+    self.device = device
 
-  def run(self, num_cycle: int = 5, device: str = 'cpu',
-          client: DockerClient = None):
+  def run(self, client: DockerClient = None):
     for f in os.listdir(self.input_dir):  # Cycling all fasta files
       if f.endswith('.fa'):
         basename = '.'.join(os.path.basename(f).split('.')[:-1])
         self.commands.append((f'python3 /OmegaFold/main.py '
-                              f'--model {self.model} '
-                              f'--device {device} '
-                              f'--num_cycle {num_cycle} '
+                              f'--model {self.model_weights} '
+                              f'--device {self.device} '
+                              f'--num_cycle {self.num_recycles} '
                               f'{OmegaFoldContainer.INPUT_DIR}/{f} '
                               f'{OmegaFoldContainer.OUTPUT_DIR}/{basename}'))
     super()._run_container(client)

@@ -293,6 +293,8 @@ class Proteins:
                   struct protein
     """
     Proteins.__check_seq_and_struct_coherence(seq, struct)
+    # Changing protein file
+    seq.filename = struct.filename
     # Adding props
     seq.props = seq.props | struct.props
     # Adding atoms and coordinates

@@ -203,7 +203,7 @@ class RFdiffusionContainer(BaseContainer):
   INPUT_DIR = '/app/RFdiffusion/inputs'
   OUTPUT_DIR = '/app/RFdiffusion/outputs'
 
-  def __init__(self, model_dir, input_dir, output_dir, num_designs: int = 3):
+  def __init__(self, model_dir, input_dir, output_dir, num_designs: int = 3, partial_T: int = 20):
     super().__init__(
       image='ameg/rfdiffusion:latest',
       entrypoint='/bin/bash',
@@ -219,15 +219,15 @@ class RFdiffusionContainer(BaseContainer):
     self.input_dir = input_dir
     self.output_dir = output_dir
     self.num_designs = num_designs
+    self.partial_T = partial_T
 
   def run(self, input_pdb, contig_map: RFdiffusionContigMap, partial_T: int = 20,
           potentials: RFdiffusionPotentials = None,
           client: DockerClient = None) -> bool:
-    self.commands = [self.__create_command(input_pdb, contig_map, potentials, partial_T)]
+    self.commands = [self.__create_command(input_pdb, contig_map, potentials)]
     return super()._run_container(client)
 
-  def __create_command(self, input_pdb, contig_map: RFdiffusionContigMap,
-                       potentials: RFdiffusionPotentials, partial_T: int) -> str:
+  def __create_command(self, input_pdb, contig_map: RFdiffusionContigMap, potentials: RFdiffusionPotentials) -> str:
     cmd = f'python {RFdiffusionContainer.SCRIPT_LOCATION}'
     pdb_name = os.path.basename(input_pdb).split('.')[0]
     pdb_path = f'{RFdiffusionContainer.INPUT_DIR}/{pdb_name}.pdb'
@@ -242,7 +242,7 @@ class RFdiffusionContainer(BaseContainer):
     }
     if contig_map.partial:  # Partial diffusion
       args['contigmap.provide_seq'] = contig_map.provide_seq_to_string()
-      args['diffuser.partial_T'] = partial_T
+      args['diffuser.partial_T'] = self.partial_T
     if potentials is not None:
       args['potentials.guiding_potentials'] = f"'{potentials.potentials_to_string()}'"
       args['potentials.guide_scale'] = potentials.guide_scale
