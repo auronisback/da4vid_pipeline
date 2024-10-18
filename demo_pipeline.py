@@ -78,7 +78,7 @@ rfdiff = RFdiffusionContainer(**run1_conf['rfdiffusion'])
 
 contig_map = RFdiffusionContigMap(protein).full_diffusion().add_provide_seq(*epitope)
 potentials = RFdiffusionPotentials(guiding_scale=10).add_monomer_contacts(5).add_rog(12).linear_decay()
-rfdiff.run(input_pdb=protein_name, contig_map=contig_map, potentials=potentials, client=client)
+# rfdiff.run(input_pdb=protein_name, contig_map=contig_map, potentials=potentials, client=client)
 
 # First round of filtering on backbones
 print('Filtering generated backbones by SS and RoG')
@@ -116,8 +116,8 @@ print(f'  - sampling temperature: {run1_conf["proteinmpnn"]["sampling_temp"]}')
 print(f'  - backbone noise: {run1_conf["proteinmpnn"]["backbone_noise"]}')
 os.makedirs(run1_conf['proteinmpnn']['output_dir'], exist_ok=True)
 pmpnn = ProteinMPNNContainer(**run1_conf['proteinmpnn'])
-pmpnn.add_fixed_chain('A', [p for p in range(epitope[0], epitope[1]+1)])
-pmpnn.run(client)
+pmpnn.add_fixed_chain('A', [p for p in range(epitope[0], epitope[1] + 1)])
+# pmpnn.run(client)
 
 # Loading new proteins from FASTAs
 sequenced = {}
@@ -131,7 +131,8 @@ for protein in backbones:
     'sampled': {s.name: s for s in sampled[1:]}
   }
 
-# Copying PMPNN outputs to OmegaFold directory
+  # Copying PMPNN outputs to OmegaFold directory
+
 os.makedirs(run1_conf['omegafold']['input_dir'], exist_ok=True)
 os.makedirs(run1_conf['omegafold']['output_dir'], exist_ok=True)
 for f in os.listdir(f'{run1_conf["proteinmpnn"]["output_dir"]}/seqs'):
@@ -144,7 +145,7 @@ print(f' - model weights: {run1_conf["omegafold"]["model_weights"]}')
 print(f' - num_recycles: {run1_conf["omegafold"]["num_recycles"]}')
 
 omegafold = OmegaFoldContainer(**run1_conf['omegafold'])
-omegafold.run(client=client)
+#omegafold.run(client=client)
 
 # Renaming OmegaFold outputs in another directory
 run1_omegafold_renamed = '/home/user/da4vid/pipeline_demo/run1/omegafold/renamed'
@@ -246,7 +247,6 @@ print(f' - num_recycles: {run2_conf["omegafold"]["num_recycles"]}')
 
 omegafold = OmegaFoldContainer(**run2_conf['omegafold'])
 omegafold.run(client=client)
-
 
 # Retrieving second run predictions
 print('Retrieving Omegafold predictions')
