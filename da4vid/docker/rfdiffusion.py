@@ -1,4 +1,6 @@
 import os
+from typing import Tuple
+
 from typing_extensions import Self
 
 from docker.client import DockerClient
@@ -123,6 +125,10 @@ class RFdiffusionContigMap:
       provide_seq += f',{start}-{end}'
     return provide_seq + ']'
 
+  @staticmethod
+  def partial_diffusion_around_epitope(protein: Protein, epitope: Tuple[int, int]):
+    return RFdiffusionContigMap(protein).full_diffusion().add_provide_seq(*epitope)
+
 
 class RFdiffusionPotentials:
   """
@@ -203,7 +209,9 @@ class RFdiffusionContainer(BaseContainer):
   INPUT_DIR = '/app/RFdiffusion/inputs'
   OUTPUT_DIR = '/app/RFdiffusion/outputs'
 
-  def __init__(self, model_dir, input_dir, output_dir, num_designs: int = 3, partial_T: int = 20):
+  def __init__(self, model_dir, input_dir, output_dir, input_pdb: str,
+               contig_map: RFdiffusionContigMap,
+               num_designs: int = 3, partial_T: int = 20, potentials: RFdiffusionPotentials = None):
     super().__init__(
       image='ameg/rfdiffusion:latest',
       entrypoint='/bin/bash',
@@ -218,33 +226,35 @@ class RFdiffusionContainer(BaseContainer):
     self.model_dir = model_dir
     self.input_dir = input_dir
     self.output_dir = output_dir
+    self.input_pdb = input_pdb
+    self.contig_map = contig_map
     self.num_designs = num_designs
     self.partial_T = partial_T
+    self.potentials = potentials
 
-  def run(self, input_pdb, contig_map: RFdiffusionContigMap, partial_T: int = 20,
-          potentials: RFdiffusionPotentials = None,
-          client: DockerClient = None) -> bool:
-    self.commands = [self.__create_command(input_pdb, contig_map, potentials)]
+  def run(self, client: DockerClient = None) -> bool:
+    self.commands = [self.__create_command()]
     return super()._run_container(client)
 
-  def __create_command(self, input_pdb, contig_map: RFdiffusionContigMap, potentials: RFdiffusionPotentials) -> str:
+  def __create_command(self) -> str:
     cmd = f'python {RFdiffusionContainer.SCRIPT_LOCATION}'
-    pdb_name = os.path.basename(input_pdb).split('.')[0]
-    pdb_path = f'{RFdiffusionContainer.INPUT_DIR}/{pdb_name}.pdb'
-    output_prefix = f'{RFdiffusionContainer.OUTPUT_DIR}/{pdb_name}/{pdb_name}'
+    pdb_file = os.path.basename(self.input_pdb)
+    pdb_name = '.'.join(pdb_file.split('.')[:-1])
+    pdb_path = f'{RFdiffusionContainer.INPUT_DIR}/{pdb_file}'
+    output_prefix = f'{RFdiffusionContainer.OUTPUT_DIR}/{pdb_name}'
     args = {
       'inference.cautious': False,  # Overwrites previous diffusion in output folder
       'inference.input_pdb': pdb_path,
       'inference.output_prefix': output_prefix,
       'inference.model_directory_path': RFdiffusionContainer.MODELS_FOLDER,
       'inference.num_designs': self.num_designs,
-      'contigmap.contigs': contig_map.contigs_to_string()
+      'contigmap.contigs': self.contig_map.contigs_to_string()
     }
-    if contig_map.partial:  # Partial diffusion
-      args['contigmap.provide_seq'] = contig_map.provide_seq_to_string()
+    if self.contig_map.partial:  # Partial diffusion
+      args['contigmap.provide_seq'] = self.contig_map.provide_seq_to_string()
       args['diffuser.partial_T'] = self.partial_T
-    if potentials is not None:
-      args['potentials.guiding_potentials'] = f"'{potentials.potentials_to_string()}'"
-      args['potentials.guide_scale'] = potentials.guide_scale
-      args['potentials.guide_decay'] = f'"{potentials.guide_decay}"'
+    if self.potentials is not None:
+      args['potentials.guiding_potentials'] = f"'{self.potentials.potentials_to_string()}'"
+      args['potentials.guide_scale'] = self.potentials.guide_scale
+      args['potentials.guide_decay'] = f'"{self.potentials.guide_decay}"'
     return ' '.join([cmd, *[f'{key}={value}' for key, value in args.items()]])

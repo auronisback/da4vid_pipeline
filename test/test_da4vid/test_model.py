@@ -251,7 +251,7 @@ class ProteinsTest(unittest.TestCase):
     ])
     with self.assertRaises(ValueError):
       Proteins.merge_sequence_with_structure(seq, struct)
-      
+
   def test_merge_proteins(self):
     seq = Protein('DEM01', filename='demo1.fa', chains=[
       Chain('A', residues=Residues.from_sequence('CC')),
@@ -281,7 +281,39 @@ class ProteinsTest(unittest.TestCase):
                          f'Invalid number of atoms for chain {seq_chain.name} and residue {seq_residue.number}')
         self.assertEqual([a.coords for a in seq_residue.atoms], [a.coords for a in struct_residue.atoms],
                          f'Invalid atom coordinates for chain {seq_chain.name} and residue {seq_residue.number}')
-    self.assertDictEqual({'foo':'bar', 'bar':'baz'}, seq.props, 'Invalid merged props')
+    self.assertDictEqual({'foo': 'bar', 'bar': 'baz'}, seq.props, 'Invalid merged props')
+
+  def test_add_properties(self):
+    p = Protein('DEM0')
+    p.add_prop('my.first.wonderful.property', 10)
+    p.add_prop('my.second.awful.property', 'foo')
+    self.assertDictEqual({
+      'my': {
+        'first': {
+          'wonderful': {
+            'property': 10
+          }
+        }, 'second': {
+          'awful': {
+            'property': 'foo'
+          }
+        }
+      }
+    }, p.props, 'Invalid property dictionary')
+
+  def test_get_property(self):
+    p = Protein('DEM0')
+    p.add_prop('my.first.wonderful.property', 10)
+    p.add_prop('my.second.awful.property', 'foo')
+    value = p.get_prop('my.first.wonderful.property')
+    self.assertEqual(10, value, 'Invalid retrieved property')
+
+  def test_get_not_existing_property(self):
+    p = Protein('DEM0')
+    p.add_prop('my.first.wonderful.property', 10)
+    p.add_prop('my.second.awful.property', 'foo')
+    value = p.get_prop('my.second.wonderful.property')
+    self.assertIsNone(value, 'Property has been found?!')
 
 
 if __name__ == '__main__':

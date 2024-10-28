@@ -273,6 +273,46 @@ class Protein:
       self.__ca_coords = torch.tensor(ca_coords)
     return self.__ca_coords
 
+  def add_prop(self, key: str, value: Any) -> None:
+    """
+    Adds a property to the protein, parsing its key according to dots.
+    :param key: The name of the prop, in dot notation
+    :param value: The value related to the property
+    """
+    if not self.props:
+      self.props = {}
+    tokens = key.split('.')
+    actual_dict = self.props
+    for token in tokens[:-1]:
+      # Adding dictionaries if nested properties is not present in actual dictionary for all but the last
+      if token not in actual_dict.keys():
+        actual_dict[token] = {}
+      actual_dict = actual_dict[token]
+    # Adding last token with value
+    actual_dict[tokens[-1]] = value
+
+  def get_prop(self, key: str) -> Any | None:
+    """
+    Gets a property of the proteins using its dot separated key if it is present.
+    :param key: The key of the prop in dot notation
+    :return: The value for the key or None if the key is not present
+    """
+    tokens = key.split('.')
+    actual_dict = self.props
+    for token in tokens[:-1]:
+      if token not in actual_dict.keys():
+        return None
+      actual_dict = actual_dict[token]
+    return actual_dict.get(tokens[-1], None)
+
+  def has_prop(self, key: str) -> bool:
+    """
+    Check if the given property key is present in the props.
+    :param key: The props key, in dot notation
+    :return: True if the prop is present, false otherwise
+    """
+    return self.get_prop(key) is not None
+
 
 class Proteins:
   """

@@ -33,10 +33,10 @@ def filter_by_rog(proteins: List[Protein], cutoff: float = None, percentage: boo
   if cutoff is None:
     cutoff = len(proteins) if not percentage else 100.
   __check_cutoff(cutoff, percentage)
-  without_rog = [protein for protein in proteins if 'rog' not in protein.props.keys()]
+  without_rog = [protein for protein in proteins if not protein.has_prop('rog')]
   # Evaluating rog for missing proteins
   rog(without_rog, device)
-  filtered = list(filter(lambda p: p.props['rog'] <= threshold, proteins))
+  filtered = list(filter(lambda p: p.get_prop('rog') <= threshold, proteins))
   filtered.sort(key=lambda p: p.props['rog'])
   num_retained = int(cutoff*len(proteins)/100) if percentage else cutoff
   return filtered[:num_retained]
@@ -60,8 +60,8 @@ def filter_by_ss(proteins: List[Protein], cutoff: float = None, percentage: bool
     cutoff = len(proteins) if not percentage else 100.
   __check_cutoff(cutoff, percentage)
   __add_ss_props(proteins, device)
-  filtered = list(filter(lambda p: p.props['ss'] >= threshold, proteins))
-  filtered.sort(key=lambda p: p.props['ss'], reverse=True)
+  filtered = list(filter(lambda p: p.get_prop('ss') >= threshold, proteins))
+  filtered.sort(key=lambda p: p.get_prop('ss'), reverse=True)
   num_retained = int(cutoff*len(proteins)/100) if percentage else cutoff
   return filtered[:num_retained]
 
@@ -84,8 +84,8 @@ def cluster_by_ss(proteins: List[Protein], threshold: int = 0,
     raise ValueError(f'Invalid threshold: {threshold}')
   __add_ss_props(proteins, device)
   ss_dict = {}
-  for protein in filter(lambda p: p.props['ss'] >= threshold, proteins):
-    ss_num = int(protein.props['ss'])
+  for protein in filter(lambda p: p.get_prop('ss') >= threshold, proteins):
+    ss_num = int(protein.get_prop('ss'))
     if ss_num not in ss_dict.keys():
       ss_dict[ss_num] = [protein]
     else:
@@ -97,11 +97,11 @@ def __add_ss_props(proteins: List[Protein], device: str = 'cpu'):
   ss_num = count_secondary_structures(proteins, device)
   # Adding 'ss' prop to proteins
   for ss, protein in zip(ss_num, proteins):
-    protein.props['ss'] = ss
+    protein.add_prop('ss', ss)
 
 
 def filter_by_plddt(proteins: List[Protein], cutoff: float = None, percentage: bool = False,
-                    threshold: float = 0, device: str = 'cpu'):
+                    threshold: float = 0, plddt_prop: str = 'plddt', device: str = 'cpu'):
   """
   Filters a list of proteins according to the pLDDT values for the
   proteins. It needs the "plddt" prop assigned to the protein or to
@@ -112,6 +112,7 @@ def filter_by_plddt(proteins: List[Protein], cutoff: float = None, percentage: b
                  number of retained proteins
   :param percentage: Flag to check whether cutoff is absolute or a percentage
   :param threshold: The threshold below which a protein is discarded
+  :param plddt_prop: The key for pLDDT value in properties
   :param device: The device on which average the pLDDT if needed
   :return: The list of filtered proteins
   :raise ValueError: if either the cutoff or the threshold are invalid
@@ -124,13 +125,13 @@ def filter_by_plddt(proteins: List[Protein], cutoff: float = None, percentage: b
   __check_cutoff(cutoff, percentage)
   if not proteins:
     return []
-  proteins_plddt = evaluate_plddt(proteins, device)
+  proteins_plddt = evaluate_plddt(proteins, plddt_prop=plddt_prop, device=device)
   if torch.any(torch.isnan(proteins_plddt)):
     raise AttributeError('at least one protein has a NaN pLDDT score')
   for protein, plddt in zip(proteins, proteins_plddt):
-    protein.props['plddt'] = plddt.item()
-  filtered = list(filter(lambda p: p.props['plddt'] >= threshold, proteins))
-  filtered.sort(key=lambda p: p.props['plddt'], reverse=True)
+    protein.add_prop(plddt_prop, plddt.item())
+  filtered = list(filter(lambda p: p.get_prop(plddt_prop) >= threshold, proteins))
+  filtered.sort(key=lambda p: p.get_prop(plddt_prop), reverse=True)
   num_retained = int(cutoff*len(proteins)/100) if percentage else cutoff
   return filtered[:num_retained]
 

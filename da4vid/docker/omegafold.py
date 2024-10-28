@@ -40,4 +40,5 @@ class OmegaFoldContainer(BaseContainer):
                               f'--num_cycle {self.num_recycles} '
                               f'{OmegaFoldContainer.INPUT_DIR}/{f} '
                               f'{OmegaFoldContainer.OUTPUT_DIR}/{basename}'))
-    super()._run_container(client)
+    return super()._run_container(client)
+

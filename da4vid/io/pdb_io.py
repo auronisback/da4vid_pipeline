@@ -1,4 +1,4 @@
-from typing import Union, List
+from typing import Union, List, Any
 
 import os
 from pathlib import Path
@@ -42,10 +42,11 @@ def __load_protein(pdb_file: Union[str, Path], b_fact_prop: str) -> Protein:
   protein_name = '.'.join(os.path.basename(pdb_file).split('.')[:-1])
   protein = Protein(protein_name, filename=str(pdb_file))
   with open(pdb_file) as f:
+    lines = f.readlines()
     resi_id = 0  # Global (outside chains) residue identifier
     chain: Chain = Chain('-1')
     resi: Residue = Residue(-1)
-    for line in f:
+    for line in lines:
       if line.startswith('ATOM'):
         line = line.strip()
         chain_id = line[21]

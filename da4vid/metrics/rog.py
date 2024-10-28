@@ -53,7 +53,7 @@ def rog(proteins: Union[Protein, List[Protein]], device: str = 'cpu') -> torch.T
       radii.append(__rog(coord.unsqueeze(0), __atoms_to_one_hot([atom]), device=device))
     radii = torch.stack(radii)
   for protein, radius in zip(proteins, radii):
-    protein.props['rog'] = radius
+    protein.add_prop('rog', radius)
   return radii.squeeze()
 
 

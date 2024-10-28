@@ -56,7 +56,7 @@ class DsspTest(unittest.TestCase):
     in_pdb = f'{RESOURCES_ROOT}/dssp_test/dssp_test_1.pdb'
     protein = read_from_pdb(in_pdb)
     ss_num = count_secondary_structures(protein)
-    self.assertEqual(6, ss_num, 'Number of SS does not match')
+    self.assertEqual([6], ss_num, 'Number of SS does not match')
 
   def test_count_secondary_structures_on_multiple_proteins(self):
     in_folder = f'{RESOURCES_ROOT}/dssp_test/same_lengths'

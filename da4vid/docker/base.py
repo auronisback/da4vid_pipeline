@@ -7,8 +7,10 @@ from docker.types import DeviceRequest, Mount
 
 class BaseContainer(abc.ABC):
 
-  def __init__(self, image: str, entrypoint: str, commands: Union[List[str], str] = [],
+  def __init__(self, image: str, entrypoint: str, commands: Union[List[str], str] = None,
                volumes: Dict[str, str] = None, with_gpus: bool = False, detach: bool = False):
+    if commands is None:
+      commands = []
     self.image = image
     self.entrypoint = entrypoint
     self.commands = commands
@@ -36,4 +38,4 @@ class BaseContainer(abc.ABC):
       for line in out:
         print(line.decode().strip())
     container.stop()
-    return True  # Fix this trying to check response of commands
+    return True  # TODO: Fix this trying to check response of commands

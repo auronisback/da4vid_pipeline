@@ -1,0 +1,36 @@
+- run1:
+    root: INSERT 1ST RUN ROOT DIRECTORY
+    rfdiffusion:
+      model_dir: INSERT RFDIFFUSION MODEL DIR
+      num_designs: 2000
+      partial_T: 23
+      contacts_threshold: 5
+      rog_potential: 12
+    backbone_filtering:
+      ss_threshold: 5
+      rog_cutoff: 10
+    proteinmpnn:
+      seqs_per_target: 2000
+      sampling_temp: .5
+      backbone_noise: .20
+    omegafold:
+      model_dir: INSERT OMEGAFOLD MODEL DIR
+      num_recycles: 5
+      model_weights: 2
+    sequence_filtering:
+      plddt_threshold: 80
+      rog_cutoff: 10
+    cutoff: 40
+- run2:
+    root: INSERT 2ND RUN ROOT DIRECTORY
+    proteinmpnn:
+      seqs_per_target: 2000
+      sampling_temp: .2
+      backbone_noise: .0
+    omegafold:
+      model_dir: INSERT_OMEGAFOLD_MODEL_DIR
+      num_recycles: 5
+      model_weights: 2
+    sequence_filtering:
+      plddt_threshold: 85
+    cutoff: 40

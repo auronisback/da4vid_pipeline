@@ -124,7 +124,7 @@ class RFdiffusionContigMapTest(unittest.TestCase):
     contig_map.add_provide_seq(14, 24)
     self.assertTrue(contig_map.partial, 'Partial diffusion not correctly set')
     self.assertEqual(1, len(contig_map.provide_seq), 'Provide seq has not one element')
-    self.assertEqual((14, 24), contig_map.provide_seq[0], 'Invalid added provide_seq')
+    self.assertEqual((13, 23), contig_map.provide_seq[0], 'Invalid added provide_seq')
 
   def test_add_invalid_interval_to_provide_seqs(self):
     contig_map = RFdiffusionContigMap(self.__load_protein())
@@ -141,8 +141,8 @@ class RFdiffusionContigMapTest(unittest.TestCase):
     contig_map.add_provide_seq(14, 24).add_provide_seq(38, 42)
     self.assertTrue(contig_map.partial, 'Partial diffusion not correctly set')
     self.assertEqual(2, len(contig_map.provide_seq), 'Provide seq has not one element')
-    self.assertEqual((14, 24), contig_map.provide_seq[0], 'Invalid provide_seq at 0')
-    self.assertEqual((38, 42), contig_map.provide_seq[1], 'Invalid provide_seq at 1')
+    self.assertEqual((13, 23), contig_map.provide_seq[0], 'Invalid provide_seq at 0')
+    self.assertEqual((37, 41), contig_map.provide_seq[1], 'Invalid provide_seq at 1')
 
   def test_get_provide_seq_string_when_provide_seq_is_empty(self):
     contig_map = RFdiffusionContigMap()
@@ -153,13 +153,13 @@ class RFdiffusionContigMapTest(unittest.TestCase):
     contig_map = RFdiffusionContigMap(self.__load_protein())
     contig_map.add_provide_seq(14, 24)
     ps_string = contig_map.provide_seq_to_string()
-    self.assertEqual('[14-24]', ps_string, 'Invalid provide_seq string')
+    self.assertEqual('[13-23]', ps_string, 'Invalid provide_seq string')
 
   def test_get_provide_seq_string_with_multiple_seqs(self):
     contig_map = RFdiffusionContigMap(self.__load_protein())
     contig_map.add_provide_seq(14, 24).add_provide_seq(38, 42)
     ps_string = contig_map.provide_seq_to_string()
-    self.assertEqual('[14-24,38-42]', ps_string, 'Invalid provide_seq string')
+    self.assertEqual('[13-23,37-41]', ps_string, 'Invalid provide_seq string')
 
 
 class RFdiffusionPotentialsTest(unittest.TestCase):
