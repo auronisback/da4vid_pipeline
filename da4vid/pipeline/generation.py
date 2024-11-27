@@ -141,9 +141,8 @@ class BackboneFilteringStep(PipelineStep):
 
 class ProteinMPNNStep(PipelineStep):
 
-  def __init__(self, backbones: List[Protein], input_dir: str, chain: str, epitope: Tuple[int, int], output_dir: str,
+  def __init__(self, input_dir: str, chain: str, epitope: Tuple[int, int], output_dir: str,
                seqs_per_target: int, sampling_temp: float, backbone_noise: float, client: DockerClient = None):
-    self.backbones = backbones
     self.input_dir = input_dir
     self.chain = chain
     self.epitope = epitope
@@ -175,8 +174,8 @@ class ProteinMPNNStep(PipelineStep):
       raise RuntimeError('ProteinMPNN step failed')
     # Creating the output set of samples
     print('Loading sequences from FASTA')
-    sample_set = SampleSet()
-    sample_set.add_samples([Sample(name=b.name, filepath=b.filename, protein=b) for b in self.backbones])
+    new_set = SampleSet()
+    new_set.add_samples([Sample(name=s.name, filepath=s.filepath, protein=s.protein) for s in sample_set.samples()])
     for sample in tqdm(sample_set.samples(), file=sys.stdout):
       fasta_filepath = '.'.join(os.path.basename(sample.filepath).split('.')[:-1]) + '.fa'
       sequences = self.__rename_sequences_and_extract_data(os.path.join(self.output_dir, 'seqs', fasta_filepath))

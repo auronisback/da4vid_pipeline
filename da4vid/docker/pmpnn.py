@@ -89,4 +89,5 @@ class ProteinMPNNContainer(BaseContainer):
                         f'--sampling_temp {self.sampling_temp} '
                         f'--backbone_noise {self.backbone_noise}')
     # Returning the commands
-    return [create_cmd, parse_cmd, assign_cmd, make_fixed_dict_cmd, protein_mpnn_cmd]
+    return [create_cmd, parse_cmd, assign_cmd, make_fixed_dict_cmd, protein_mpnn_cmd,
+            f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}']

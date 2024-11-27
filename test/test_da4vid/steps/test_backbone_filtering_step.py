@@ -2,8 +2,7 @@ import os.path
 import shutil
 import unittest
 
-from da4vid.io.sample_io import sample_set_from_backbone
-from da4vid.model.samples import SampleSet
+from da4vid.io.sample_io import sample_set_from_backbones
 from da4vid.pipeline.generation import BackboneFilteringStep
 from test.cfg import RESOURCES_ROOT
 
@@ -18,7 +17,7 @@ class BackboneFilteringStepTest(unittest.TestCase):
     shutil.rmtree(self.output_folder)
 
   def test_filtering_with_ss_threshold(self):
-    sample_set = sample_set_from_backbone(self.backbone_folder)
+    sample_set = sample_set_from_backbones(self.backbone_folder)
     filtered_set = BackboneFilteringStep(
       ss_threshold=4,
       rog_cutoff=3,
