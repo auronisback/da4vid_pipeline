@@ -5,7 +5,7 @@ define an automated pipeline for generating _de-novo_ antigens by epitope scaffo
 
 **This is a preliminary version showing components and modules used to implement the pipeline.**
 
-![Overview of DA4ViD pipeline](./doc/imgs/pipeline.png)
+![Overview of DA4ViD pipeline](docs/imgs/pipeline.png)
 
 The pipeline starts with an epitope motif and generates several candidate amino-acidic sequences for the antigen.
 These sequence are then validated in order to assess the confidence of their folding, filtering the best candidate.
@@ -38,13 +38,7 @@ The `da4vid` package contains several sub-modules:
 At the moment, the main script for the pipeline execution is still under construction, as the different docker images employed are in phase of publication on _DockerHub_ ([https://hub.docker.com/](https://hub.docker.com/)).
 A subset of tests can be however executed.
 
-To install the required libraries, first enable the project's *virtual environment*:
-
-```bash
-source .venv/bin/activate
-```
-
-then install from requirements (it may take some time...):
+To install the required libraries, from requirements (it may take some time...):
 ```bash
 pip install -r requirements.txt
 ```
