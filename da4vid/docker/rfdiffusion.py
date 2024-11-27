@@ -1,12 +1,11 @@
 import os
 from typing import Tuple
 
+from docker.client import DockerClient
 from typing_extensions import Self
 
-from docker.client import DockerClient
-
 from da4vid.docker.base import BaseContainer
-from da4vid.model import Protein, Chain
+from da4vid.model.proteins import Protein, Chain
 
 
 class RFdiffusionContigMap:
@@ -134,6 +133,7 @@ class RFdiffusionPotentials:
   """
   Class defining the potentials used to guide the diffusion.
   """
+
   def __init__(self, guiding_scale: float = 1):
     """
     Creates a new guiding potential configuration with linear decay.
@@ -202,16 +202,15 @@ class RFdiffusionPotentials:
 
 
 class RFdiffusionContainer(BaseContainer):
-
   # Container local folders
   SCRIPT_LOCATION = '/app/RFdiffusion/scripts/run_inference.py'
   MODELS_FOLDER = '/app/RFdiffusion/models'
   INPUT_DIR = '/app/RFdiffusion/inputs'
   OUTPUT_DIR = '/app/RFdiffusion/outputs'
 
-  def __init__(self, model_dir, input_dir, output_dir, input_pdb: str,
-               contig_map: RFdiffusionContigMap,
-               num_designs: int = 3, partial_T: int = 20, potentials: RFdiffusionPotentials = None):
+  def __init__(self, model_dir: str, output_dir: str, input_pdb: str,
+               contig_map: RFdiffusionContigMap, input_dir: str = None, num_designs: int = 3,
+               partial_T: int = 20, potentials: RFdiffusionPotentials = None):
     super().__init__(
       image='ameg/rfdiffusion:latest',
       entrypoint='/bin/bash',
@@ -233,14 +232,18 @@ class RFdiffusionContainer(BaseContainer):
     self.potentials = potentials
 
   def run(self, client: DockerClient = None) -> bool:
+    if self.input_dir is None:
+      raise ValueError(f'Input folder not specified')
     self.commands = [self.__create_command()]
+    # Modifying permissions of created files
+    self.commands.append(f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}')
     return super()._run_container(client)
 
   def __create_command(self) -> str:
     cmd = f'python {RFdiffusionContainer.SCRIPT_LOCATION}'
-    pdb_file = os.path.basename(self.input_pdb)
-    pdb_name = '.'.join(pdb_file.split('.')[:-1])
-    pdb_path = f'{RFdiffusionContainer.INPUT_DIR}/{pdb_file}'
+    pdb_basename = os.path.basename(self.input_pdb)
+    pdb_name = '.'.join(pdb_basename.split('.')[:-1])
+    pdb_path = f'{RFdiffusionContainer.INPUT_DIR}/{pdb_basename}'
     output_prefix = f'{RFdiffusionContainer.OUTPUT_DIR}/{pdb_name}'
     args = {
       'inference.cautious': False,  # Overwrites previous diffusion in output folder

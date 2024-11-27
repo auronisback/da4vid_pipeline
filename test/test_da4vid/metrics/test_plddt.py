@@ -37,10 +37,10 @@ class PlddtTest(unittest.TestCase):
   def test_plddt_one_protein_with_plddt_already(self):
     in_folder = f'{RESOURCES_ROOT}/plddt_test/'
     proteins = read_pdb_folder(in_folder, b_fact_prop='plddt')
-    proteins[0].props['plddt'] = torch.tensor(79.3916)
+    proteins[0].add_prop('plddt', torch.tensor(79.3916))
     plddt = evaluate_plddt(proteins)
     self.assertEqual(3, plddt.shape[0], msg='Invalid number of returned pLDDT values')
-    ground_truth = torch.tensor([proteins[0].props['plddt'], 85.5686, 83.7320])
+    ground_truth = torch.tensor([proteins[0].get_prop('plddt'), 85.5686, 83.7320])
     for i in range(3):
       torch.testing.assert_close(ground_truth[i], plddt[i], atol=1e-4, rtol=1e-7,
                                  msg='Mean pLDDT is not close enough')

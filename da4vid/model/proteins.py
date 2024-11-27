@@ -169,6 +169,22 @@ class Chain:
     return [atom for resi in self.residues for atom in resi.get_backbone_atoms()]
 
 
+class Chains:
+  """
+  Utility class to instantiate chains.
+  """
+  @staticmethod
+  def from_sequence(sequence: str, chain_separator: str = ':') -> List[Chain]:
+    if not sequence:
+      return []
+    chains = []
+    chain_id = 'A'
+    for chain in sequence.split(chain_separator):
+      chains.append(Chain(chain_id, residues=Residues.from_sequence(chain)))
+      chain_id = chr(ord(chain_id) + 1)
+    return chains
+
+
 class Protein:
   """
   Models a Protein.
@@ -182,7 +198,7 @@ class Protein:
     # Linking chains to this protein
     for chain in self.chains:
       chain.protein = self
-    self.props = props if props is not None else {}
+    self.props = NestedDict(props)
     self.device = device
     self.__sequence = None  # Cache for sequence
     self.__coords = None  # Cache for coordinates
@@ -279,17 +295,7 @@ class Protein:
     :param key: The name of the prop, in dot notation
     :param value: The value related to the property
     """
-    if not self.props:
-      self.props = {}
-    tokens = key.split('.')
-    actual_dict = self.props
-    for token in tokens[:-1]:
-      # Adding dictionaries if nested properties is not present in actual dictionary for all but the last
-      if token not in actual_dict.keys():
-        actual_dict[token] = {}
-      actual_dict = actual_dict[token]
-    # Adding last token with value
-    actual_dict[tokens[-1]] = value
+    self.props.add_value(key, value)
 
   def get_prop(self, key: str) -> Any | None:
     """
@@ -297,13 +303,7 @@ class Protein:
     :param key: The key of the prop in dot notation
     :return: The value for the key or None if the key is not present
     """
-    tokens = key.split('.')
-    actual_dict = self.props
-    for token in tokens[:-1]:
-      if token not in actual_dict.keys():
-        return None
-      actual_dict = actual_dict[token]
-    return actual_dict.get(tokens[-1], None)
+    return self.props.get_value(key)
 
   def has_prop(self, key: str) -> bool:
     """
@@ -311,7 +311,7 @@ class Protein:
     :param key: The props key, in dot notation
     :return: True if the prop is present, false otherwise
     """
-    return self.get_prop(key) is not None
+    return self.props.has_key(key)
 
 
 class Proteins:
@@ -336,7 +336,7 @@ class Proteins:
     # Changing protein file
     seq.filename = struct.filename
     # Adding props
-    seq.props = seq.props | struct.props
+    seq.props.merge(struct.props)
     # Adding atoms and coordinates
     for chain_seq in seq.chains:
       chain_struct = struct.get_chain(chain_seq.name)
@@ -356,3 +356,77 @@ class Proteins:
       if len(chain_seq.residues) != len(chain_struct.residues):
         raise ValueError(f'chain {chain_seq.name} has a different number'
                          f' of residues between sequence and structure protein')
+
+  @staticmethod
+  def from_sequence(name: str, sequence: str, chain_separator: str = ':') -> Protein:
+    return Protein(name, chains=Chains.from_sequence(sequence, chain_separator))
+
+
+class NestedDict:
+  def __init__(self, dictionary: Dict[str, Any] = None):
+    """
+    Created a new nested dictionary object, optionally specifying
+    a default dictionary.
+    :param dictionary: If given, the nested dictionary will be inited
+                       with the given key-value pairs
+    """
+    self.dict = dictionary if dictionary else {}
+
+  def add_value(self, key: str, value: Any) -> None:
+    """
+    Adds a value to this nested dictionary specifying its
+    dot-separated key.
+    :param key: The value's dot-separated key related
+    :param value: The value which has to be added in the nested dictionary
+    """
+    tokens = key.split('.')
+    actual_dict = self.dict
+    for token in tokens[:-1]:
+      # Adding dictionaries if nested properties is not present in actual dictionary for all but the last
+      if token not in actual_dict.keys():
+        actual_dict[token] = {}
+      actual_dict = actual_dict[token]
+    # Adding last token with value
+    actual_dict[tokens[-1]] = value
+
+  def has_key(self, key: str) -> bool:
+    """
+    Check if a key is present in this nested dictionary.
+    :param key: The dot-separated key which needs to be searched
+    :return: Whether the key is present or not in this object
+    """
+    return self.get_value(key) is not None
+
+  def get_value(self, key: str) -> Any:
+    """
+    Gets the value related to the given key.
+    :param key: The dot-separated key
+    :return: The value related to the given key, or None if no
+             key is present
+    """
+    tokens = key.split('.')
+    actual_dict = self.dict
+    for token in tokens[:-1]:
+      if token not in actual_dict.keys():
+        return None
+      actual_dict = actual_dict[token]
+    return actual_dict.get(tokens[-1], None)
+
+  def merge(self, other) -> None:
+    """
+    Merges this dictionary with another nested dictionary object.
+    :param other: The other nested dictionary
+    """
+    self.dict = self.__merge_rec(self.dict, other.dict)
+
+  @staticmethod
+  def __merge_rec(d1: Dict[str, Any], d2: Dict[str, Any]) -> Dict[str, Any]:
+    for key in d2:
+      if key in d1:
+        if isinstance(d1[key], dict) and isinstance(d2[key], dict):
+          d1[key] = NestedDict.__merge_rec(d1[key], d2[key])
+        elif d1[key] != d2[key]:
+          raise ValueError(f'Conflict at key {key}')
+      else:
+        d1[key] = d2[key]
+    return d1

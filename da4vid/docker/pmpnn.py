@@ -1,8 +1,11 @@
+import os
+import shutil
 from typing import List, Tuple
 
 from docker import DockerClient
 
 from da4vid.docker.base import BaseContainer
+from da4vid.model.proteins import Protein
 
 
 class ProteinMPNNContainer(BaseContainer):
@@ -25,7 +28,7 @@ class ProteinMPNNContainer(BaseContainer):
   __JSONL_DIR = '/home/ProteinMPNN/run/jsonl'
 
   def __init__(self, input_dir: str, output_dir: str, seqs_per_target: int,
-               sampling_temp: float = .1, backbone_noise: float = .0):
+               sampling_temp: float = .1, backbone_noise: float = .0, backbones: List[Protein] | None = None):
     super().__init__(
       image='ameg/protein_mpnn:latest',
       entrypoint='/bin/bash',
@@ -42,6 +45,7 @@ class ProteinMPNNContainer(BaseContainer):
     # Setting ProteinMPNN other
     self.sampling_temp = sampling_temp
     self.backbone_noise = backbone_noise
+    self.backbones = backbones  # TODO: make PMPNN uses only given backbones
     # Default chains and positions
     self.__fixed_chains = {}
 
@@ -86,4 +90,3 @@ class ProteinMPNNContainer(BaseContainer):
                         f'--backbone_noise {self.backbone_noise}')
     # Returning the commands
     return [create_cmd, parse_cmd, assign_cmd, make_fixed_dict_cmd, protein_mpnn_cmd]
-

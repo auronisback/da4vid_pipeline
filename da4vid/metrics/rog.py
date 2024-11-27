@@ -3,7 +3,7 @@ from typing import List, Tuple, Union
 
 import torch
 
-from da4vid.model import Protein
+from da4vid.model.proteins import Protein
 
 ATOM_MASSES = torch.Tensor([
   12.0107,  # C

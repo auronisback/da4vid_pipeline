@@ -3,7 +3,7 @@ from typing import List, Union
 import pydssp
 import torch
 
-from da4vid.model import Protein
+from da4vid.model.proteins import Protein
 
 
 def dssp(proteins: Union[List[Protein], Protein], device: str = 'cpu') -> Union[str, List[str]]:

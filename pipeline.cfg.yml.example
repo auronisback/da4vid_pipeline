@@ -18,9 +18,10 @@
       num_recycles: 5
       model_weights: 2
     sequence_filtering:
-      plddt_threshold: 80
+      plddt_threshold: 85
+      average_cutoff: 20
       rog_cutoff: 10
-    cutoff: 40
+      max_samples: 10
 - run2:
     root: INSERT 2ND RUN ROOT DIRECTORY
     proteinmpnn:
@@ -31,6 +32,16 @@
       model_dir: INSERT_OMEGAFOLD_MODEL_DIR
       num_recycles: 5
       model_weights: 2
-    sequence_filtering:
+    omegafold_filtering:
       plddt_threshold: 85
-    cutoff: 40
+      average_cutoff: 20
+      max_samples: 10
+    colabfold:
+      model_dir: INSERT_COLABFOLD_MODEL_DIR
+      num_recycle=5
+      model_name='alphafold2'
+      num_models=5
+    colabfold_filtering:
+      plddt_threshold: 85
+      average_cutoff: 20
+      max_samples: 10

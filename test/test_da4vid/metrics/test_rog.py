@@ -3,7 +3,7 @@ import unittest
 import torch
 
 from da4vid.metrics import rog
-from da4vid.model import Residues, Protein, Chain, Atom
+from da4vid.model.proteins import Residues, Protein, Chain, Atom
 from test.cfg import TEST_GPU
 
 
@@ -47,8 +47,8 @@ class RoGTest(unittest.TestCase):
     ground_truth = 0.96
     torch.testing.assert_close(ground_truth, radius.item(), atol=1e-4, rtol=1e-6,
                                msg='Invalid RoG')
-    self.assertIn('rog', protein.props.keys(), 'rog prop not added to protein')
-    torch.testing.assert_close(ground_truth, protein.props['rog'].item(), atol=1e-4, rtol=1e-6,
+    self.assertTrue(protein.has_prop('rog'), 'rog prop not added to protein')
+    torch.testing.assert_close(ground_truth, protein.get_prop('rog').item(), atol=1e-4, rtol=1e-6,
                                msg='Invalid rog prop')
 
   def test_multiple_stackable_proteins_rog(self):
@@ -59,10 +59,10 @@ class RoGTest(unittest.TestCase):
     torch.testing.assert_close(ground_truths, radii, atol=1e-4, rtol=1e-6,
                                msg=f'Radii do not match: Expected {ground_truths}, actual {radii}')
     for i, protein, radius, ground_truth in zip(range(2), proteins, radii, ground_truths):
-      self.assertIn('rog', protein.props.keys(), f'rog prop not added to protein {i}')
-      torch.testing.assert_close(ground_truth.item(), protein.props['rog'].item(), atol=1e-4, rtol=1e-6,
+      self.assertTrue(protein.has_prop('rog'), f'rog prop not added to protein {i}')
+      torch.testing.assert_close(ground_truth.item(), protein.get_prop('rog').item(), atol=1e-4, rtol=1e-6,
                                  msg=f'Invalid rog prop for protein {i}: '
-                                     f'[Expected] {ground_truth} != Actual {protein.props["rog"].item()}')
+                                     f'[Expected] {ground_truth} != Actual {protein.get_prop("rog").item()}')
 
   def test_multiple_unstackable_proteins_rog(self):
     proteins = [self.__get_demo_protein_1(), self.__get_demo_protein_2()]
@@ -72,10 +72,10 @@ class RoGTest(unittest.TestCase):
     torch.testing.assert_close(ground_truths, radii, atol=1e-4, rtol=1e-6,
                                msg=f'Radii do not match: Expected {ground_truths}, actual {radii}')
     for i, protein, radius, ground_truth in zip(range(2), proteins, radii, ground_truths):
-      self.assertIn('rog', protein.props.keys(), f'rog prop not added to protein {i}')
-      torch.testing.assert_close(ground_truth.item(), protein.props['rog'].item(), atol=1e-4, rtol=1e-6,
+      self.assertTrue(protein.has_prop('rog'), f'rog prop not added to protein {i}')
+      torch.testing.assert_close(ground_truth.item(), protein.get_prop('rog').item(), atol=1e-4, rtol=1e-6,
                                  msg=f'Invalid rog prop for protein {i}: '
-                                     f'[Expected] {ground_truth} != Actual {protein.props["rog"].item()}')
+                                     f'[Expected] {ground_truth} != Actual {protein.get_prop("rog").item()}')
 
   def test_rog_evaluation_on_gpu(self):
     proteins = [self.__get_demo_protein_1(), self.__get_demo_protein_2()]
@@ -85,10 +85,11 @@ class RoGTest(unittest.TestCase):
     torch.testing.assert_close(ground_truths, radii, atol=1e-4, rtol=1e-6,
                                msg=f'Radii do not match: Expected {ground_truths}, actual {radii}')
     for i, protein, radius, ground_truth in zip(range(2), proteins, radii, ground_truths):
-      self.assertIn('rog', protein.props.keys(), f'rog prop not added to protein {i}')
-      torch.testing.assert_close(ground_truth.item(), protein.props['rog'].item(), atol=1e-4, rtol=1e-6,
+      self.assertTrue(protein.has_prop('rog'), f'rog prop not added to protein {i}')
+      torch.testing.assert_close(ground_truth.item(), protein.get_prop('rog').item(), atol=1e-4, rtol=1e-6,
                                  msg=f'Invalid rog prop for protein {i}: '
-                                     f'[Expected] {ground_truth} != Actual {protein.props["rog"].item()}')
+                                     f'[Expected] {ground_truth} != Actual {protein.get_prop("rog").item()}')
+
 
 if __name__ == '__main__':
   unittest.main()

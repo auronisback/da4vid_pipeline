@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 from da4vid.io import read_from_pdb, read_pdb_folder
-from da4vid.model import Protein, Chain, Residue, Atom
+from da4vid.model.proteins import Protein, Chain, Residue, Atom
 from test.cfg import RESOURCES_ROOT, TEST_GPU
 
 from da4vid.metrics.kabsch import kabsch, evaluate_rmsd

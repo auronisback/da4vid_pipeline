@@ -2,7 +2,7 @@ from typing import Tuple, Union, List
 
 import torch
 
-from da4vid.model import Protein
+from da4vid.model.proteins import Protein
 
 
 def evaluate_rmsd(first: Union[Protein, List[Protein]], second: Union[Protein, List[Protein]],

@@ -3,7 +3,7 @@ from typing import Union, List, Any
 import os
 from pathlib import Path
 
-from da4vid.model import Protein, Residue, Chain, Atom
+from da4vid.model.proteins import Protein, Residue, Chain, Atom
 
 
 def read_pdb_folder(pdb_folder: Union[str, Path], b_fact_prop: str = 'temperature') -> List[Protein]:

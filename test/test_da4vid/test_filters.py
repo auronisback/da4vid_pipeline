@@ -129,7 +129,7 @@ class FiltersTest(unittest.TestCase):
     self.assertEqual(5, len(clustering.keys()), 'Invalid number of clusters')
     for i, k in enumerate(clustering.keys()):
       for j, protein in enumerate(clustering[k]):
-        self.assertEqual(k, protein.props['ss'], f'Invalid protein {j} in cluster {i}-{k}')
+        self.assertEqual(k, protein.get_prop('ss'), f'Invalid protein {j} in cluster {i}-{k}')
 
   def test_cluster_by_secondary_structure_with_threshold(self):
     pdb_folder = f'{RESOURCES_ROOT}/filter_test'

@@ -1,7 +1,8 @@
+import os.path
 import unittest
 
 from da4vid.docker.rfdiffusion import RFdiffusionContigMap, RFdiffusionPotentials
-from da4vid.model import Protein
+from da4vid.model.proteins import Protein
 from da4vid.io.pdb_io import read_from_pdb
 from test.cfg import RESOURCES_ROOT
 
@@ -10,7 +11,8 @@ class RFdiffusionContigMapTest(unittest.TestCase):
 
   @staticmethod
   def __load_protein() -> Protein:
-    return read_from_pdb(f'{RESOURCES_ROOT}/rfdiffusion_test/rfdiffusion_test.pdb')
+    return read_from_pdb(
+      os.path.join(RESOURCES_ROOT, 'docker_test', 'rfdiffusion_test', 'rfdiffusion_test.pdb'))
 
   def test_add_random_length_contig_with_min_and_max(self):
     contig_map = RFdiffusionContigMap()

@@ -4,7 +4,7 @@ from typing import List, Dict
 import torch
 
 from da4vid.metrics import rog, count_secondary_structures, evaluate_plddt
-from da4vid.model import Protein
+from da4vid.model.proteins import Protein
 
 
 def __check_cutoff(cutoff: float, percentage: bool):
@@ -37,7 +37,7 @@ def filter_by_rog(proteins: List[Protein], cutoff: float = None, percentage: boo
   # Evaluating rog for missing proteins
   rog(without_rog, device)
   filtered = list(filter(lambda p: p.get_prop('rog') <= threshold, proteins))
-  filtered.sort(key=lambda p: p.props['rog'])
+  filtered.sort(key=lambda p: p.get_prop('rog'))
   num_retained = int(cutoff*len(proteins)/100) if percentage else cutoff
   return filtered[:num_retained]
 

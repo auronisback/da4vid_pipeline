@@ -2,7 +2,54 @@ import unittest
 
 import torch
 
-from da4vid.model import Residue, Chain, Residues, Protein, Atom, Proteins
+from da4vid.model.proteins import Residue, Chain, Residues, Protein, Atom, Proteins, NestedDict, Chains
+
+
+class NestedDictionaryTest(unittest.TestCase):
+  def test_add_value_to_dictionary_with_new_key(self):
+    d = NestedDict()
+    d.add_value('my.new.value', 'the value')
+    self.assertTrue(d.has_key('my.new.value'), f'Key not found!')
+
+  def test_get_value_from_dictionary_with_key_present(self):
+    d = NestedDict()
+    d.add_value('my.new.value', 'the value')
+    self.assertEqual('the value', d.get_value('my.new.value'))
+
+  def test_get_value_returns_none_when_key_is_not_present(self):
+    d = NestedDict()
+    d.add_value('my.new.value', 'the value')
+    self.assertIsNone(d.get_value('my.other.value'))
+
+  def test_create_nested_dictionary_from_dict(self):
+    d = NestedDict({'my': {'initial': 'dictionary'}, 'is': 'here'})
+    self.assertEqual('dictionary',  d.get_value('my.initial'))
+    self.assertEqual('here', d.get_value('is'))
+
+  def test_add_value_updates_dictionary_if_key_already_present(self):
+    d = NestedDict({'my': {'key': 'old_value'}})
+    d.add_value('my.key', 'new_value')
+    self.assertEqual('new_value', d.get_value('my.key'))
+
+  def test_merge_dictionaries(self):
+    d1 = NestedDict()
+    d1.add_value('my.new.key', 'value')
+    d1.add_value('my.brand.new.key', 'new_value')
+    d2 = NestedDict()
+    d2.add_value('my.other.key', 'other_value')
+    d1.merge(d2)
+    self.assertEqual('value', d1.get_value('my.new.key'))
+    self.assertEqual('new_value', d1.get_value('my.brand.new.key'))
+    self.assertEqual('other_value', d1.get_value('my.other.key'))
+    # Checking d2 has not been modified
+    self.assertFalse(d2.has_key('my.new.key'))
+    self.assertFalse(d2.has_key('my.brand.new.key'))
+
+  def test_merge_dictionaries_raises_error_if_conflicting_values(self):
+    d1 = NestedDict({'my': {'new': 'key'}})
+    d2 = NestedDict({'my': {'new': 'conflict'}})
+    with self.assertRaises(ValueError):
+      d1.merge(d2)
 
 
 class ResidueTest(unittest.TestCase):
@@ -52,6 +99,18 @@ class ResidueTest(unittest.TestCase):
     self.assertEqual('O', backbone[3].code)
 
 
+class ResiduesTest(unittest.TestCase):
+  def test_residues_from_sequence(self):
+    residues = Residues.from_sequence('KGSTANL')
+    self.assertEqual(7, len(residues))
+    for c, r in zip('KGSTANL', residues):
+      self.assertEqual(c, r.get_one_letter_code())
+
+  def test_residues_from_sequence_raises_error_if_invalid_aa_provided(self):
+    with self.assertRaises(ValueError):
+      Residues.from_sequence('KGSTANLB')
+
+
 class ChainTest(unittest.TestCase):
 
   def test_sequence_extraction(self):
@@ -94,6 +153,36 @@ class ChainTest(unittest.TestCase):
     self.assertEqual('C', backbone[6].code)
     self.assertEqual('O', backbone[7].code)
 
+
+class ChainsTest(unittest.TestCase):
+  def test_chains_with_one_chain_sequence(self):
+    chains = Chains.from_sequence('KGSTANL')
+    self.assertEqual(1, len(chains))
+    self.assertEqual('A', chains[0].name)
+    self.assertEqual('KGSTANL', chains[0].sequence())
+
+  def test_chains_with_multiple_chain_sequences(self):
+    chains = Chains.from_sequence('KGSTANL:LNATSGK:ACYK')
+    self.assertEqual(3, len(chains))
+    self.assertEqual('A', chains[0].name)
+    self.assertEqual('B', chains[1].name)
+    self.assertEqual('C', chains[2].name)
+    self.assertEqual('KGSTANL', chains[0].sequence())
+    self.assertEqual('LNATSGK', chains[1].sequence())
+    self.assertEqual('ACYK', chains[2].sequence())
+
+  def test_chains_with_multiple_chain_sequences_and_different_separator(self):
+    chains = Chains.from_sequence('DIVMTQ$SLAMSV$RNQKY$DDSR', chain_separator='$')
+    self.assertEqual(4, len(chains))
+
+  def test_chains_with_invalid_separator(self):
+    # Omitting the separator parameter
+    with self.assertRaises(ValueError):
+      chains = Chains.from_sequence('DIVMTQ$SLAMSV$RNQKY$DDSR')
+
+  def test_chains_from_empty_sequence(self):
+    chains = Chains.from_sequence('')
+    self.assertEqual([], chains)
 
 class ProteinTest(unittest.TestCase):
 
@@ -214,6 +303,50 @@ class ProteinTest(unittest.TestCase):
     self.assertEqual(torch.Size([4, 3]), ca_coords.shape, 'Invalid CA shape')
     torch.testing.assert_close(ground_truth, ca_coords, msg='CA coords are not close enough')
 
+  def test_add_properties(self):
+    p = Protein('DEM0')
+    p.add_prop('my.first.wonderful.property', 10)
+    p.add_prop('my.second.awful.property', 'foo')
+    self.assertDictEqual({
+      'my': {
+        'first': {
+          'wonderful': {
+            'property': 10
+          }
+        }, 'second': {
+          'awful': {
+            'property': 'foo'
+          }
+        }
+      }
+    }, p.props.dict, 'Invalid property dictionary')
+
+  def test_get_property(self):
+    p = Protein('DEM0')
+    p.add_prop('my.first.wonderful.property', 10)
+    p.add_prop('my.second.awful.property', 'foo')
+    value = p.get_prop('my.first.wonderful.property')
+    self.assertEqual(10, value, 'Invalid retrieved property')
+
+  def test_get_not_existing_property(self):
+    p = Protein('DEM0')
+    p.add_prop('my.first.wonderful.property', 10)
+    p.add_prop('my.second.awful.property', 'foo')
+    value = p.get_prop('my.second.wonderful.property')
+    self.assertIsNone(value, 'Property has been found?!')
+
+  def test_protein_length(self):
+    p = Proteins.from_sequence('DEMO', 'KGSTANL')
+    self.assertEqual(7, p.length())
+
+  def test_protein_has_prop(self):
+    p = Protein('DEMO', props={'my': {'prop': 42}})
+    self.assertTrue(p.has_prop('my.prop'))
+
+  def test_protein_has_not_prop(self):
+    p = Protein('DEMO', props={'my': {'prop': 42}})
+    self.assertFalse(p.has_prop('another.prop'))
+
 
 class ProteinsTest(unittest.TestCase):
   def test_merge_proteins_with_different_chains_raise_error(self):
@@ -281,39 +414,14 @@ class ProteinsTest(unittest.TestCase):
                          f'Invalid number of atoms for chain {seq_chain.name} and residue {seq_residue.number}')
         self.assertEqual([a.coords for a in seq_residue.atoms], [a.coords for a in struct_residue.atoms],
                          f'Invalid atom coordinates for chain {seq_chain.name} and residue {seq_residue.number}')
-    self.assertDictEqual({'foo': 'bar', 'bar': 'baz'}, seq.props, 'Invalid merged props')
+    self.assertDictEqual({'foo': 'bar', 'bar': 'baz'}, seq.props.dict, 'Invalid merged props')
 
-  def test_add_properties(self):
-    p = Protein('DEM0')
-    p.add_prop('my.first.wonderful.property', 10)
-    p.add_prop('my.second.awful.property', 'foo')
-    self.assertDictEqual({
-      'my': {
-        'first': {
-          'wonderful': {
-            'property': 10
-          }
-        }, 'second': {
-          'awful': {
-            'property': 'foo'
-          }
-        }
-      }
-    }, p.props, 'Invalid property dictionary')
-
-  def test_get_property(self):
-    p = Protein('DEM0')
-    p.add_prop('my.first.wonderful.property', 10)
-    p.add_prop('my.second.awful.property', 'foo')
-    value = p.get_prop('my.first.wonderful.property')
-    self.assertEqual(10, value, 'Invalid retrieved property')
-
-  def test_get_not_existing_property(self):
-    p = Protein('DEM0')
-    p.add_prop('my.first.wonderful.property', 10)
-    p.add_prop('my.second.awful.property', 'foo')
-    value = p.get_prop('my.second.wonderful.property')
-    self.assertIsNone(value, 'Property has been found?!')
+  def test_protein_from_sequence(self):
+    p = Proteins.from_sequence('DEMO', 'KGSTANL:LNATSGK')
+    self.assertEqual('DEMO', p.name)
+    self.assertEqual(2, len(p.chains))
+    self.assertEqual('KGSTANL', p.chains[0].sequence())
+    self.assertEqual('LNATSGK', p.chains[1].sequence())
 
 
 if __name__ == '__main__':

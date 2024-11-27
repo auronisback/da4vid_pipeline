@@ -1,2 +1,5 @@
 /.venv/
 /docker.cfg
+/.env
+/tmp/
+/notebook/

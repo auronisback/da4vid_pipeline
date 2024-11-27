@@ -8,22 +8,6 @@ class RunConfig:
   Configuration for a single run.
   """
 
-  def __init__(self, name: str | int, root_folder: str, cutoff: int = None, percentage: bool = False):
-    """
-    Initializes the run configuration, specifying its name.
-    :param name: The full name identifier of the run, if it is a string, or the
-                 index of the run
-    """
-    self.name = name if isinstance(name, str) else f'run{name}'
-    self.root_folder = root_folder
-    self.cutoff = cutoff
-    self.percentage = percentage
-    self.rfdiffusion_config = None
-    self.backbone_filtering_config = None
-    self.proteinmpnn_config = None
-    self.omegafold_config = None
-    self.sequence_filtering_config = None
-
   class __RFdiffusionConfig:
     """
     Class encapsulating the configuration for RFdiffusion.
@@ -127,18 +111,51 @@ class RunConfig:
     )
 
   class __SequenceFilteringConfig:
-    def __init__(self, plddt_threshold: float, rog_cutoff: float):
+    def __init__(self, plddt_threshold: float, average_cutoff: int, rog_cutoff: float, max_samples: int):
       self.plddt_threshold = plddt_threshold
+      self.average_cutoff = average_cutoff
       self.rog_cutoff = rog_cutoff
+      self.max_samples = max_samples
 
     def __str__(self):
       return (f'sequence_filtering:\n - plddt_threshold: {self.plddt_threshold}\n'
               f' - rog_threshold: {self.rog_cutoff}\n')
 
-  def add_sequence_filtering_configuration(self, plddt_threshold: float, rog_cutoff: float = None):
+  def add_omegafold_filtering_configuration(self, plddt_threshold: float, average_cutoff: int,
+                                            max_samples: int = None, rog_cutoff: float = None):
     self.sequence_filtering_config = RunConfig.__SequenceFilteringConfig(
       plddt_threshold=plddt_threshold,
-      rog_cutoff=rog_cutoff
+      average_cutoff=average_cutoff,
+      rog_cutoff=rog_cutoff,
+      max_samples=max_samples
+    )
+
+  class __ColabFoldConfig:
+    def __init__(self, model_dir: str, num_recycle: int, model_name: str, num_models: int):
+      self.model_dir = model_dir
+      self.num_recycle = num_recycle
+      self.model_name = model_name
+      self.num_models = num_models
+
+    def __str__(self):
+      return (f'colabfold:\n - model_dir: {self.model_dir}\n - num_recycle: {self.num_recycle}\n'
+              f' - model_name: {self.model_name}\n - num_models: {self.num_models}\n')
+
+  def add_colabfold_configuration(self, model_dir: str, num_recycle: int, model_name: str, num_models: int):
+    self.colabfold_config = self.__ColabFoldConfig(
+      model_dir=model_dir,
+      num_recycle=num_recycle,
+      model_name=model_name,
+      num_models=num_models
+    )
+
+  def add_colabfold_filtering(self, plddt_threshold: float, average_cutoff: int,
+                              max_samples: int = None, rog_cutoff: float = None):
+    self.colabfold_filtering_config = RunConfig.__SequenceFilteringConfig(
+      plddt_threshold=plddt_threshold,
+      average_cutoff=average_cutoff,
+      rog_cutoff=rog_cutoff,
+      max_samples=max_samples
     )
 
   def get_rfdiffusion_configuration(self) -> __RFdiffusionConfig:
@@ -156,8 +173,31 @@ class RunConfig:
   def get_sequence_filtering_configuration(self) -> __SequenceFilteringConfig:
     return self.sequence_filtering_config
 
+  def get_colabfold_configuration(self) -> __ColabFoldConfig:
+    return self.colabfold_config
+
+  def get_colabfold_filtering_configuration(self) -> __SequenceFilteringConfig:
+    return self.colabfold_filtering_config
+
   def output_folder(self) -> str:
     return os.path.join(self.root_folder, 'outputs')
+
+  def __init__(self, name: str | int, root_folder: str, percentage: bool = False):
+    """
+    Initializes the run configuration, specifying its name.
+    :param name: The full name identifier of the run, if it is a string, or the
+                 index of the run
+    """
+    self.name = name if isinstance(name, str) else f'run{name}'
+    self.root_folder = root_folder
+    self.percentage = percentage
+    self.rfdiffusion_config: RunConfig.__RFdiffusionConfig | None = None
+    self.backbone_filtering_config: RunConfig.__BackboneFilteringConfig | None = None
+    self.proteinmpnn_config: RunConfig.__ProteinMPNNConfig | None = None
+    self.omegafold_config: RunConfig.__OmegaFoldConfig | None = None
+    self.sequence_filtering_config: RunConfig.__SequenceFilteringConfig | None = None
+    self.colabfold_config: RunConfig.__ColabFoldConfig | None = None
+    self.colabfold_filtering_config: RunConfig.__SequenceFilteringConfig | None = None
 
   def __str__(self):
     return (f'run: {self.name}:\n - root_folder: {self.root_folder}\n'
@@ -200,7 +240,7 @@ class PipelineConfig:
       for el in data:
         run_name = list(el.keys())[0]
         run_el = el[run_name]
-        run = RunConfig(run_name, run_el.get('root', None), run_el.get('cutoff', None), run_el.get('percentage', None))
+        run = RunConfig(run_name, run_el.get('root', None), run_el.get('percentage', None))
         if 'rfdiffusion' in run_el.keys():
           run.add_rfdiffusion_configuration(**run_el['rfdiffusion'])
         if 'backbone_filtering' in run_el.keys():
@@ -209,7 +249,11 @@ class PipelineConfig:
           run.add_proteinmpnn_configuration(**run_el['proteinmpnn'])
         if 'omegafold' in run_el.keys():
           run.add_omegafold_configuration(**run_el['omegafold'])
-        if 'sequence_filtering' in run_el.keys():
-          run.add_sequence_filtering_configuration(**run_el['sequence_filtering'])
+        if 'omegafold_filtering' in run_el.keys():
+          run.add_omegafold_filtering_configuration(**run_el['omegafold_filtering'])
+        if 'colabfold' in run_el.keys():
+          run.add_colabfold_configuration(**run_el['colabfold'])
+        if 'colabfold_filtering' in run_el.keys():
+          run.add_colabfold_filtering(**run_el['colabfold_filtering'])
         config.add_run_configuration(run)
       return config
