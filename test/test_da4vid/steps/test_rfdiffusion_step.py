@@ -1,4 +1,5 @@
 import os.path
+import shutil
 import unittest
 
 import docker
@@ -13,14 +14,15 @@ from test.cfg import RESOURCES_ROOT, DOTENV_FILE
 class RFdiffusionStepTest(unittest.TestCase):
   def setUp(self):
     self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['RFDIFFUSION_MODEL_FOLDER']
+    self.output_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'rfdiffusion_test', 'outputs')
     self.client = docker.from_env()
 
   def tearDown(self):
+    shutil.rmtree(self.output_folder)
     self.client.close()
 
   def test_rfdiffusion_step_with_one_sample(self):
     pdb_demo = os.path.join(RESOURCES_ROOT, 'steps_test', 'rfdiffusion_test', 'demo.pdb')
-    output_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'rfdiffusion_test', 'outputs')
     orig_set = SampleSet()
     orig_set.add_samples(Sample(
       name='DEMO',
@@ -29,7 +31,7 @@ class RFdiffusionStepTest(unittest.TestCase):
     ))
     step = RFdiffusionStep(
       model_dir=self.model_weights,
-      output_dir=output_folder,
+      output_dir=self.output_folder,
       epitope=(21, 30),
       num_designs=3,
       contacts_threshold=4,

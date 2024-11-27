@@ -134,4 +134,3 @@ def filter_by_plddt(proteins: List[Protein], cutoff: float = None, percentage: b
   filtered.sort(key=lambda p: p.get_prop(plddt_prop), reverse=True)
   num_retained = int(cutoff*len(proteins)/100) if percentage else cutoff
   return filtered[:num_retained]
-

@@ -7,4 +7,7 @@
     <orderEntry type="jdk" jdkName="Python 3.10 (da4vid_pipeline)" jdkType="Python SDK" />
     <orderEntry type="sourceFolder" forTests="false" />
   </component>
+  <component name="ReSTService">
+    <option name="DOC_DIR" value="$MODULE_DIR$/docs/sphinx" />
+  </component>
 </module>

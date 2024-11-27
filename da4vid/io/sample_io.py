@@ -8,7 +8,7 @@ from da4vid.io.fasta_io import read_fasta
 from da4vid.model.samples import SampleSet, Sample, Fold, Sequence
 
 
-def sample_set_from_backbone(backbone_folder: str, b_fact_prop: str = 'plddt') -> SampleSet:
+def sample_set_from_backbones(backbone_folder: str, b_fact_prop: str = 'plddt') -> SampleSet:
   """
   Creates a sample set object with only backbone samples.
   :param backbone_folder: The folder in which backbones are stored

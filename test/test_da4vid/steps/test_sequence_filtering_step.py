@@ -3,6 +3,7 @@ import shutil
 import unittest
 
 from da4vid.io.sample_io import sample_set_from_folders
+from da4vid.model.samples import Fold
 from da4vid.pipeline.validation import SequenceFilteringStep
 from test.cfg import RESOURCES_ROOT
 
@@ -25,8 +26,7 @@ class SequenceFilteringStepTest(unittest.TestCase):
       plddt_threshold=25,
       avg_cutoff=3
     ).execute(sample_set)
+    self.assertEqual(9, len(filtered_set.samples()))
     for sample in filtered_set.samples():
-      folds = sample.get_folds_for_model('omegafold')
-      print(len(folds))
-      for fold in folds:
-        print(fold.name, fold.metrics.get_metric('plddt'))
+      self.assertIsInstance(sample, Fold)
+      self.assertGreaterEqual(sample.metrics.get_metric('plddt'), 25)
