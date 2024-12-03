@@ -40,8 +40,12 @@ class OmegaFoldContainer(BaseContainer):
     chunks = self.__get_fasta_chunks()
     with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
       for i, chunk in enumerate(chunks):  # Cycling on all chunks
-        device = f'cuda:{i % 2}'
+        device = f'cuda:{i % 2}'  # TODO: get devices automatically
         executor.submit(self.__run_on_fasta_list, fasta_base_names=chunk, container=container, device=device)
+    # After everything is finished, change permissions on generated files
+    super()._execute_command(container,
+                             f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}',
+                             file=sys.stdout)
     super()._stop_container(container)
     return True
 
@@ -50,9 +54,6 @@ class OmegaFoldContainer(BaseContainer):
     for fasta_basename in fasta_base_names:
       command = self.__create_command(fasta_basename, device)
       super()._execute_command(container, command, file=sys.stdout)
-    super()._execute_command(container,
-                             f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}',
-                             file=sys.stdout)
 
   def __create_command(self, fasta_basename, device):
     fasta_no_ext = '.'.join(fasta_basename.split('.')[:-1])
@@ -64,6 +65,13 @@ class OmegaFoldContainer(BaseContainer):
             f'{OmegaFoldContainer.OUTPUT_DIR}/{fasta_no_ext}')
 
   def __get_fasta_chunks(self) -> List[List[str]]:
-    files = [f for f in os.listdir(self.input_dir) if f.endswith('.fa')]
-    n = math.ceil(len(files) / self.max_parallel)
-    return [files[i:i + n] for i in range(0, len(files), n)]
+      files = [f for f in os.listdir(self.input_dir) if f.endswith('.fa')]
+      n = len(files) // self.max_parallel
+      rem = len(files) % self.max_parallel
+      ff = []
+      for i in range(self.max_parallel):
+        if i < rem:
+          ff.append(files[i:i + n + 1])
+        else:
+          ff.append(files[i:i + n])
+      return ff

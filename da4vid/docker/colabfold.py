@@ -1,6 +1,7 @@
+import concurrent.futures
 import os
 import sys
-from typing import List, Union, Tuple
+from typing import List, Tuple
 
 import docker
 
@@ -47,20 +48,42 @@ class ColabFoldContainer(BaseContainer):
     self.max_parallel = max_parallel
 
   def run(self, client: docker.DockerClient = None):
-    # TODO: Parallelize
     # TODO: Check <a>https://github.com/YoshitakaMo/localcolabfold/issues/200</a> to
     #       set environment variables to determine running GPUS
     container = super()._create_container(client)
-    commands = []
-    for f in os.listdir(self.input_dir):
-      if f.endswith('.fa'):
-        for command in self.__commands_for_single_fasta(f):
-          super()._execute_command(container, command, file=sys.stdout)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
+      chunks = self.__get_fasta_chunks()
+      for i, chunk in enumerate(chunks):
+        device = f'cuda:{i % 2}'
+        executor.submit(self.__run_on_fasta_list, fasta_basenames=chunk,
+                        container=container, device=device)
+    # Modifying permissions after works
     super()._execute_command(container,
                              f'/usr/bin/chmod 777 --recursive {ColabFoldContainer.OUTPUT_DIR}',
                              file=sys.stdout)
     super()._stop_container(container)
     return True
+
+  def __run_on_fasta_list(self, fasta_basenames: List[str], container, device: str):
+    print(f'Running predictions for {fasta_basenames} on {device}')
+    for fasta_basename in fasta_basenames:
+      for command in self.__commands_for_single_fasta(fasta_basename):
+        super()._execute_command(container, command, file=sys.stdout)
+
+  def __get_fasta_chunks(self) -> List[List[str]]:
+    files = [f for f in os.listdir(self.input_dir) if f.endswith('.fa')]
+    n = len(files) // self.max_parallel
+    rem = len(files) % self.max_parallel
+    ff = []
+    start = 0
+    for i in range(self.max_parallel):
+      if i < rem:
+        ff.append(files[start:start+n+1])
+        start = start+n+1
+      else:
+        ff.append(files[start:start+n])
+        start = start + n
+    return ff
 
   def __commands_for_single_fasta(self, f: str) -> List[str]:
     return [
@@ -72,31 +95,33 @@ class ColabFoldContainer(BaseContainer):
     ]
 
   def __create_msa_fasta_command(self, f: str) -> str:
-    input_fasta, _ = self.__get_input_output_folder(f)
+    input_fasta, _ = self.__get_input_and_output_folder(f)
     tmp_fasta = self.__get_tmp_msa_fasta_path(f)
     return f'/bin/bash -c "/usr/bin/head -n 2 {input_fasta} > {tmp_fasta}"'
 
   def __msa_only_command(self, f: str) -> str:
-    _, output_folder = self.__get_input_output_folder(f)
+    _, output_folder = self.__get_input_and_output_folder(f)
     tmp_fasta = self.__get_tmp_msa_fasta_path(f)
     return f'/root/miniforge3/bin/colabfold_batch --msa-only {tmp_fasta} {output_folder}'
 
   def __copy_msa_command(self, f: str) -> str:
-    input_fasta, output_folder = self.__get_input_output_folder(f)
+    input_fasta, output_folder = self.__get_input_and_output_folder(f)
     return f'python /localcolabfold/copy_msa.py {input_fasta} {output_folder} 1'
 
   def __prediction_command(self, f: str) -> str:
-    input_fasta, output_folder = self.__get_input_output_folder(f)
+    input_fasta, output_folder = self.__get_input_and_output_folder(f)
     return (f'/root/miniforge3/bin/colabfold_batch '
             f'--model-type {self.model_name} '
             f'--num-recycle {self.num_recycle} '
             f'--num-models {self.num_models} '
+            f'--host-url {self.msa_host_url} '
+            f'{"--zip-outputs" if self.zip_outputs else ""} '
             f'{input_fasta} {output_folder}')
 
   def __remove_msa_fasta_command(self, f: str) -> str:
     return f'/usr/bin/rm {self.__get_tmp_msa_fasta_path(f)}'
 
-  def __get_input_output_folder(self, f: str) -> Tuple[str, str]:
+  def __get_input_and_output_folder(self, f: str) -> Tuple[str, str]:
     return os.path.join(self.INPUT_DIR, f), os.path.join(self.OUTPUT_DIR, '.'.join(f.split('.')[:-1]))
 
   def __get_tmp_msa_fasta_path(self, f: str) -> str:
