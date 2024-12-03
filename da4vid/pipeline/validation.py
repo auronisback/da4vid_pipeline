@@ -1,16 +1,20 @@
 import os
+import shutil
 import sys
 from typing import List
 
+import docker.client
 import torch
 from docker import DockerClient
 from tqdm import tqdm
 
+from da4vid.docker.colabfold import ColabFoldContainer
 from da4vid.docker.omegafold import OmegaFoldContainer
 from da4vid.io import read_from_pdb
+from da4vid.io.fasta_io import write_fasta
 from da4vid.metrics import evaluate_plddt, rog
 from da4vid.model.proteins import Proteins
-from da4vid.model.samples import SampleSet, Fold
+from da4vid.model.samples import SampleSet, Fold, Sample
 from da4vid.pipeline.steps import PipelineStep
 
 
@@ -151,3 +155,66 @@ class SequenceFilteringStep(PipelineStep):
     folds.sort(key=lambda f: f.metrics.get_metric('rog'))
     folds = folds[:self.rog_cutoff]
     return folds
+
+
+class ColabFoldStep(PipelineStep):
+
+  def __init__(self, model_dir: str, input_dir: str, output_dir: str, model_name: str,
+               num_recycles: int = 3, zip_outputs: bool = False, num_models: int = 5,
+               msa_host_url: str = ColabFoldContainer.COLABFOLD_API_URL, max_parallel: int = 1,
+               client: docker.client.DockerClient = None):
+    self.model_dir = model_dir
+    self.input_dir = input_dir
+    self.output_dir = output_dir
+    self.num_recycles = num_recycles
+    self.zip_outputs = zip_outputs
+    self.model_name = model_name
+    self.num_models = num_models
+    self.msa_host_url = msa_host_url
+    self.max_parallel = max_parallel
+    self.client = client
+
+  def execute(self, sample_set: SampleSet) -> SampleSet:
+    tmp_input_folder = self.__create_tmp_input_folder()
+    self.__create_input_fastas(sample_set, tmp_input_folder)
+    container = self.__create_container(tmp_input_folder)
+    if not container.run(self.client):
+      raise RuntimeError('ColabFold container failed')
+    new_set = self.__create_new_sample_set(sample_set)
+    self.__remove_tmp_input_folder(tmp_input_folder)
+    return new_set
+
+  def __create_container(self, input_dir: str) -> ColabFoldContainer:
+    return ColabFoldContainer(
+      model_dir=self.model_dir,
+      input_dir=input_dir,
+      output_dir=self.output_dir,
+      num_recycle=self.num_recycles,
+      model_name=self.model_name,
+      zip_outputs=self.zip_outputs,
+      num_models=self.num_models,
+      msa_host_url=self.msa_host_url,
+      max_parallel=self.max_parallel
+    )
+
+  def __create_tmp_input_folder(self) -> str:
+    tmp_input_folder = os.path.join(self.input_dir, '_tmp')
+    os.makedirs(tmp_input_folder, exist_ok=True)
+    return tmp_input_folder
+
+  @staticmethod
+  def __create_input_fastas(sample_set: SampleSet, tmp_input_folder: str):
+    for sample in sample_set.samples():
+      out_fasta = os.path.join(tmp_input_folder, f'{sample.name}.fa')
+      write_fasta([seq.protein for seq in sample.sequences()], out_fasta, overwrite=True)
+
+  @staticmethod
+  def __remove_tmp_input_folder(tmp_input_folder: str):
+    shutil.rmtree(tmp_input_folder)
+
+  def __create_new_sample_set(self, old_sample_set: SampleSet) -> SampleSet:
+    # new_sample_set = SampleSet()
+    # for sample in old_sample_set.samples():
+    #   for sequence in sample.sequences():
+    #     seq_
+    return SampleSet()
