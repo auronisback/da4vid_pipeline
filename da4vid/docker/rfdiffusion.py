@@ -1,4 +1,5 @@
 import os
+import shutil
 from typing import Tuple
 
 from docker.client import DockerClient
@@ -208,11 +209,25 @@ class RFdiffusionContainer(BaseContainer):
   INPUT_DIR = '/app/RFdiffusion/inputs'
   OUTPUT_DIR = '/app/RFdiffusion/outputs'
 
-  def __init__(self, model_dir: str, output_dir: str, input_pdb: str,
-               contig_map: RFdiffusionContigMap, input_dir: str = None, num_designs: int = 3,
-               partial_T: int = 20, potentials: RFdiffusionPotentials = None):
+  def __init__(self, model_dir: str, output_dir: str, input_pdb: str, contig_map: RFdiffusionContigMap,
+               input_dir: str = None, num_designs: int = 3, diffuser_T: int = 50,
+               partial_T: int = 20, potentials: RFdiffusionPotentials = None,
+               image: str = 'da4vid/rfdiffusion:latest'):
+    """
+    Creates a new instance of this container, without starting it.
+    :param model_dir: Directory where RFdiffusion model weights are stored
+    :param output_dir: The output folder diffusions
+    :param input_pdb: The PDB input to diffuse
+    :param contig_map: The map with the contigs
+    :param input_dir: The input directory used by the container
+    :param num_designs: The number of output diffusions
+    :param diffuser_T: Timesteps used for the diffusion. It should be > 15
+    :param partial_T: Timesteps used if partial diffusion is specified in contig map
+    :param potentials: The potential object used to bias diffusion
+    :param image: The image used to run the container. Defaults to 'da4vid/rfdiffusion:latest'
+    """
     super().__init__(
-      image='ameg/rfdiffusion:latest',
+      image=image,
       entrypoint='/bin/bash',
       with_gpus=True,
       volumes={
@@ -228,12 +243,15 @@ class RFdiffusionContainer(BaseContainer):
     self.input_pdb = input_pdb
     self.contig_map = contig_map
     self.num_designs = num_designs
+    self.diffuser_T = diffuser_T
     self.partial_T = partial_T
     self.potentials = potentials
 
   def run(self, client: DockerClient = None) -> bool:
     if self.input_dir is None:
       raise ValueError(f'Input folder not specified')
+    # Moving input PDB to inputs folder
+    shutil.copy2(self.input_pdb, self.input_dir)
     self.commands = [self.__create_command()]
     # Modifying permissions of created files
     self.commands.append(f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}')
@@ -251,6 +269,7 @@ class RFdiffusionContainer(BaseContainer):
       'inference.output_prefix': output_prefix,
       'inference.model_directory_path': RFdiffusionContainer.MODELS_FOLDER,
       'inference.num_designs': self.num_designs,
+      'diffuser.T': self.diffuser_T,
       'contigmap.contigs': self.contig_map.contigs_to_string()
     }
     if self.contig_map.partial:  # Partial diffusion

@@ -17,9 +17,30 @@ from da4vid.pipeline.steps import PipelineStep
 
 
 class GenerationStep(PipelineStep):
+  """
+  Abstracts a pipeline generation step to generate sequences.
+  """
+  def __init__(self, steps: List[PipelineStep] = None):
+    self.steps = steps
+
+  def add_step(self, step: PipelineStep):
+    """
+    Adds a step to this generation step.
+    :param step: The step which will be added after previous steps
+    :return: This object, as a builder pattern
+    """
+    self.steps.append(step)
+    return self
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
-    pass
+    """
+    Executes all steps for the generation.
+    :param sample_set: The starting sample set
+    :return: The sample set obtained after executing all steps
+    """
+    for step in self.steps:
+      sample_set = step.execute(sample_set)
+    return sample_set
 
 
 class RFdiffusionStep(PipelineStep):
@@ -28,7 +49,7 @@ class RFdiffusionStep(PipelineStep):
                epitope: Tuple[int, int], num_designs: int, partial_T: int,
                contacts_threshold: float = None, rog_potential: float = None, client: DockerClient = None):
     """
-    Creates a generation step of RFdiffusion to be ran in a container.
+    Creates a generation step of RFdiffusion running in a container.
     :param model_dir: The directory in which RFdiffusion weights are stored
     :param output_dir: The directory in which outputs are stored
     :param epitope: A tuple with epitope starting and ending residues, starting from 1

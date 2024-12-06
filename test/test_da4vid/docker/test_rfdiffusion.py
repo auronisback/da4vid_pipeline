@@ -1,10 +1,15 @@
 import os.path
+import shutil
 import unittest
 
-from da4vid.docker.rfdiffusion import RFdiffusionContigMap, RFdiffusionPotentials
+import docker
+import dotenv
+
+from da4vid.docker.base import BaseContainer
+from da4vid.docker.rfdiffusion import RFdiffusionContigMap, RFdiffusionPotentials, RFdiffusionContainer
 from da4vid.model.proteins import Protein
 from da4vid.io.pdb_io import read_from_pdb
-from test.cfg import RESOURCES_ROOT
+from test.cfg import RESOURCES_ROOT, DOTENV_FILE
 
 
 class RFdiffusionContigMapTest(unittest.TestCase):
@@ -263,7 +268,74 @@ class RFdiffusionPotentialsTest(unittest.TestCase):
 
 
 class RFdiffusionTest(unittest.TestCase):
-  pass
+
+  def setUp(self):
+    self.resources_path = os.path.join(RESOURCES_ROOT, 'docker_test', 'rfdiffusion_test')
+    self.input_dir = os.path.join(self.resources_path, 'inputs')
+    os.makedirs(self.input_dir, exist_ok=True)
+    self.output_dir = os.path.join(self.resources_path, 'outputs')
+    os.makedirs(self.output_dir, exist_ok=True)
+    self.input_pdb = os.path.join(self.resources_path, 'rfdiffusion_test.pdb')
+    self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['RFDIFFUSION_MODEL_FOLDER']
+    self.client = docker.from_env()
+    self.client.images.get('da4vid/rfdiffusion').tag('rfdiff_duplicate', 'latest')
+
+  def tearDown(self):
+    shutil.rmtree(self.input_dir)
+    shutil.rmtree(self.output_dir)
+    self.client.images.remove('rfdiff_duplicate')
+    self.client.close()
+
+  def test_should_raise_error_if_invalid_image(self):
+    rfdiff = RFdiffusionContainer(
+      image='invalid_image',
+      input_dir=self.input_dir,
+      input_pdb=self.input_pdb,
+      output_dir=self.output_dir,
+      model_dir=self.model_weights,
+      contig_map=RFdiffusionContigMap()
+    )
+    with self.assertRaises(BaseContainer.DockerImageNotFoundException):
+      rfdiff.run()
+
+  def test_should_correctly_execute_diffusion_with_default_image(self):
+    protein = read_from_pdb(self.input_pdb)
+    contigs = RFdiffusionContigMap(protein)
+    contigs.add_random_length_sequence(10, 15)
+    contigs.add_fixed_sequence('A', 16, 25)
+    contigs.add_random_length_sequence(10, 15)
+    res = RFdiffusionContainer(
+      input_dir=self.input_dir,
+      input_pdb=self.input_pdb,
+      output_dir=self.output_dir,
+      model_dir=self.model_weights,
+      contig_map=contigs,
+      num_designs=3,
+      diffuser_T=15
+    ).run()
+    self.assertTrue(res, 'RFdiffusion container stopped with errors!')
+    diffused = [f for f in os.listdir(self.output_dir) if f.endswith('.pdb')]
+    self.assertEqual(3, len(diffused))
+
+  def test_should_correctly_execute_diffusion_with_specified_image(self):
+    protein = read_from_pdb(self.input_pdb)
+    contigs = RFdiffusionContigMap(protein)
+    contigs.add_random_length_sequence(10, 15)
+    contigs.add_fixed_sequence('A', 16, 25)
+    contigs.add_random_length_sequence(10, 15)
+    res = RFdiffusionContainer(
+      image='rfdiff_duplicate',
+      input_dir=self.input_dir,
+      input_pdb=self.input_pdb,
+      output_dir=self.output_dir,
+      model_dir=self.model_weights,
+      contig_map=contigs,
+      num_designs=2,
+      diffuser_T=15
+    ).run()
+    self.assertTrue(res, 'RFdiffusion container stopped with errors!')
+    diffused = [f for f in os.listdir(self.output_dir) if f.endswith('.pdb')]
+    self.assertEqual(2, len(diffused))
 
 
 if __name__ == '__main__':

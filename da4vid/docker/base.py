@@ -25,7 +25,8 @@ class BaseContainer(abc.ABC):
   def _create_container(self, client: docker.client.DockerClient):
     if client is None:
       client = self.client = docker.from_env()
-    return client.containers.run(
+    self.__check_image()
+    container = client.containers.run(
       image=self.image,
       entrypoint=self.entrypoint,
       mounts=[Mount(target, source, type='bind') for source, target in self.volumes.items()],
@@ -34,6 +35,7 @@ class BaseContainer(abc.ABC):
       auto_remove=self.auto_remove,
       tty=True
     )
+    return container
 
   def _run_container(self, client: docker.client.DockerClient = None):
     container = self._create_container(client)
@@ -55,3 +57,12 @@ class BaseContainer(abc.ABC):
     container.stop()
     if self.client is not None:
       self.client.close()
+
+  class DockerImageNotFoundException(Exception):
+    def __init__(self, message: str):
+      super().__init__(message)
+
+  def __check_image(self) -> None:
+    if not self.client.images.list(filters={'reference': self.image}):
+      raise self.DockerImageNotFoundException(f'Image not found: {self.image}')
+

@@ -27,10 +27,11 @@ class ProteinMPNNContainer(BaseContainer):
   # Internal directory to store jsonl assignment and dictionary files
   __JSONL_DIR = '/home/ProteinMPNN/run/jsonl'
 
-  def __init__(self, input_dir: str, output_dir: str, seqs_per_target: int,
-               sampling_temp: float = .1, backbone_noise: float = .0, backbones: List[Protein] | None = None):
+  def __init__(self, input_dir: str, output_dir: str, seqs_per_target: int, batch_size: int = 32,
+               sampling_temp: float = .1, backbone_noise: float = .0, backbones: List[Protein] | None = None,
+               image: str = 'da4vid/protein-mpnn:latest'):
     super().__init__(
-      image='ameg/protein_mpnn:latest',
+      image=image,
       entrypoint='/bin/bash',
       with_gpus=True,
       volumes={
@@ -46,6 +47,7 @@ class ProteinMPNNContainer(BaseContainer):
     self.sampling_temp = sampling_temp
     self.backbone_noise = backbone_noise
     self.backbones = backbones  # TODO: make PMPNN uses only given backbones
+    self.batch_size = batch_size
     # Default chains and positions
     self.__fixed_chains = {}
 
@@ -87,7 +89,8 @@ class ProteinMPNNContainer(BaseContainer):
                         f'--out_folder {self.OUTPUT_DIR} '
                         f'--num_seq_per_target {self.seqs_per_target} '
                         f'--sampling_temp {self.sampling_temp} '
-                        f'--backbone_noise {self.backbone_noise}')
+                        f'--backbone_noise {self.backbone_noise} '
+                        f'--batch_size {self.batch_size}')
     # Returning the commands
     return [create_cmd, parse_cmd, assign_cmd, make_fixed_dict_cmd, protein_mpnn_cmd,
             f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}']

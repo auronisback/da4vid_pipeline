@@ -15,9 +15,10 @@ class OmegaFoldContainer(BaseContainer):
   OUTPUT_DIR = '/Omegafold/run/outputs'
 
   def __init__(self, model_dir, input_dir, output_dir, model_weights: str = "2",
-               num_recycles: int = 5, device: str = 'cpu', max_parallel: int = 1):
+               num_recycles: int = 5, device: str = 'cpu', max_parallel: int = 1,
+               image: str = 'da4vid/omegafold:latest'):
     super().__init__(
-      image='ameg/omegafold:latest',
+      image=image,
       entrypoint='/bin/bash',
       with_gpus=True,
       volumes={
@@ -57,7 +58,7 @@ class OmegaFoldContainer(BaseContainer):
 
   def __create_command(self, fasta_basename, device):
     fasta_no_ext = '.'.join(fasta_basename.split('.')[:-1])
-    return (f'python3 /OmegaFold/main.py '
+    return (f'python3 main.py '
             f'--model {self.model_weights} '
             f'--device {device} '
             f'--num_cycle {self.num_recycles} '
