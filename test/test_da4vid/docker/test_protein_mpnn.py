@@ -7,6 +7,7 @@ import docker
 from da4vid.docker.base import BaseContainer
 from da4vid.docker.pmpnn import ProteinMPNNContainer
 from test.cfg import RESOURCES_ROOT
+from test.test_da4vid.docker.helpers import duplicate_image, remove_duplicate_image
 
 
 class ProteinMPNNContainerTest(unittest.TestCase):
@@ -17,11 +18,11 @@ class ProteinMPNNContainerTest(unittest.TestCase):
     self.output_dir = os.path.join(self.resources_path, 'outputs')
     os.makedirs(self.output_dir, exist_ok=True)
     self.client = docker.from_env()
-    self.client.images.get('da4vid/protein-mpnn').tag('pmpnn_duplicate', 'latest')
+    duplicate_image(self.client, 'da4vid/protein-mpnn', 'pmpnn_duplicate')
 
   def tearDown(self):
     shutil.rmtree(self.output_dir)
-    self.client.images.remove('pmpnn_duplicate')
+    remove_duplicate_image(self.client, 'pmpnn_duplicate')
     self.client.close()
 
   def test_should_raise_error_if_invalid_image(self):

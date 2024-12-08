@@ -9,9 +9,11 @@ from da4vid.docker.base import BaseContainer
 
 
 class ColabFoldContainer(BaseContainer):
-  MODELS_FOLDER = '/localcolabfold/colabfold/weights'
-  INPUT_DIR = '/localcolabfold/colabfold/inputs'
-  OUTPUT_DIR = '/localcolabfold/colabfold/outputs'
+  MODELS_FOLDER = '/colabfold/weights'
+  INPUT_DIR = '/colabfold/inputs'
+  OUTPUT_DIR = '/colabfold/outputs'
+  COPY_MSA_SCRIPT = '/colabfold/scripts'
+  COLABFOLD_BATCH_COMMAND = '/usr/local/envs/colabfold/bin/colabfold_batch'
 
   COLABFOLD_API_URL = 'https://api.colabfold.com'
   MODEL_NAMES = ['auto', 'alphafold2', 'alphafold2_ptm,alphafold2_multimer_v1', 'alphafold2_multimer_v2',
@@ -20,9 +22,10 @@ class ColabFoldContainer(BaseContainer):
   def __init__(self, model_dir: str, input_dir: str, output_dir: str,
                num_recycle: int = 5, zip_outputs: bool = False,
                model_name: str = MODEL_NAMES[0], num_models: int = 5,
-               msa_host_url: str = COLABFOLD_API_URL, max_parallel: int = 1):
+               msa_host_url: str = COLABFOLD_API_URL, max_parallel: int = 1,
+               image: str = 'da4vid/colabfold:latest'):
     super().__init__(
-      image='ameg/colabfold:latest',
+      image=image,
       entrypoint='/bin/bash',
       with_gpus=True,
       volumes={
@@ -48,8 +51,7 @@ class ColabFoldContainer(BaseContainer):
     self.max_parallel = max_parallel
 
   def run(self, client: docker.DockerClient = None):
-    # TODO: Check <a>https://github.com/YoshitakaMo/localcolabfold/issues/200</a> to
-    #       set environment variables to determine running GPUS
+    # TODO: Differentiate containers in order to use different devices when refactoring with CUDAManager
     container = super()._create_container(client)
     with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
       chunks = self.__get_fasta_chunks()
@@ -102,15 +104,16 @@ class ColabFoldContainer(BaseContainer):
   def __msa_only_command(self, f: str) -> str:
     _, output_folder = self.__get_input_and_output_folder(f)
     tmp_fasta = self.__get_tmp_msa_fasta_path(f)
-    return f'/root/miniforge3/bin/colabfold_batch --msa-only {tmp_fasta} {output_folder}'
+    return f'{self.COLABFOLD_BATCH_COMMAND} --msa-only {tmp_fasta} {output_folder}'
 
   def __copy_msa_command(self, f: str) -> str:
     input_fasta, output_folder = self.__get_input_and_output_folder(f)
-    return f'python /localcolabfold/copy_msa.py {input_fasta} {output_folder} 1'
+    return f'python {self.COPY_MSA_SCRIPT} {input_fasta} {output_folder} 1'
 
   def __prediction_command(self, f: str) -> str:
     input_fasta, output_folder = self.__get_input_and_output_folder(f)
-    return (f'/root/miniforge3/bin/colabfold_batch '
+    return (f'{self.COLABFOLD_BATCH_COMMAND} '
+            f'--data {self.MODELS_FOLDER} '
             f'--model-type {self.model_name} '
             f'--num-recycle {self.num_recycle} '
             f'--num-models {self.num_models} '

@@ -8,6 +8,7 @@ import dotenv
 from da4vid.docker.base import BaseContainer
 from da4vid.docker.omegafold import OmegaFoldContainer
 from test.cfg import RESOURCES_ROOT, DOTENV_FILE
+from test.test_da4vid.docker.helpers import duplicate_image, remove_duplicate_image
 
 
 class OmegaFoldContainerTest(unittest.TestCase):
@@ -18,11 +19,11 @@ class OmegaFoldContainerTest(unittest.TestCase):
     self.model_dir = dotenv.dotenv_values(DOTENV_FILE)['OMEGAFOLD_MODEL_FOLDER']
     os.makedirs(self.output_dir, exist_ok=True)
     self.client = docker.from_env()
-    self.client.images.get('da4vid/omegafold').tag('of_duplicate', 'latest')
+    duplicate_image(self.client, 'da4vid/omegafold', 'of_duplicate')
 
   def tearDown(self):
     shutil.rmtree(self.output_dir)
-    self.client.images.remove('of_duplicate')
+    remove_duplicate_image(self.client, 'of_duplicate')
     self.client.close()
 
   def test_should_raise_error_if_invalid_image(self):

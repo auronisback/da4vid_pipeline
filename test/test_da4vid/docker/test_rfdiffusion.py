@@ -10,6 +10,7 @@ from da4vid.docker.rfdiffusion import RFdiffusionContigMap, RFdiffusionPotential
 from da4vid.model.proteins import Protein
 from da4vid.io.pdb_io import read_from_pdb
 from test.cfg import RESOURCES_ROOT, DOTENV_FILE
+from test.test_da4vid.docker.helpers import duplicate_image, remove_duplicate_image
 
 
 class RFdiffusionContigMapTest(unittest.TestCase):
@@ -278,12 +279,12 @@ class RFdiffusionTest(unittest.TestCase):
     self.input_pdb = os.path.join(self.resources_path, 'rfdiffusion_test.pdb')
     self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['RFDIFFUSION_MODEL_FOLDER']
     self.client = docker.from_env()
-    self.client.images.get('da4vid/rfdiffusion').tag('rfdiff_duplicate', 'latest')
+    duplicate_image(self.client, 'da4vid/rfdiffusion', 'rfdiff_duplicate')
 
   def tearDown(self):
     shutil.rmtree(self.input_dir)
     shutil.rmtree(self.output_dir)
-    self.client.images.remove('rfdiff_duplicate')
+    remove_duplicate_image(self.client, 'rfdiff_duplicate')
     self.client.close()
 
   def test_should_raise_error_if_invalid_image(self):

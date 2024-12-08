@@ -24,7 +24,8 @@ class BaseContainer(abc.ABC):
 
   def _create_container(self, client: docker.client.DockerClient):
     if client is None:
-      client = self.client = docker.from_env()
+      client = docker.from_env()
+    self.client = client
     self.__check_image()
     container = client.containers.run(
       image=self.image,
