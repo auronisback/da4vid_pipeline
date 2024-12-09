@@ -1,4 +1,5 @@
 import abc
+from typing import List
 
 import torch
 
@@ -177,9 +178,20 @@ class CudaDeviceManager:
       case _:
         raise ValueError(f'invalid device policy: {policy}')
 
+  def next_devices(self, num: int = 1) -> CudaDevice | List[CudaDevice]:
+    """
+    Gets the next devices to use, according to the specified policy.
+    :param num: The number of devices needed, according to the policy. Defaults to 1.
+    :return: A list with num of CUDA devices. If num parameter is greater than the
+             maximum number of CUDA devices, all devices will be returned
+    """
+    if len(self.devices) < num:
+      num = len(self.devices)
+    return [self.__policy.next_device() for _ in range(num)]
+
   def next_device(self) -> CudaDevice:
     """
-    Gets the next device to use, according to the specified policy.
-    :return: The CudaDevice object to use for the next pipeline operation
+    Gets the next device according to the specified policy.
+    :return: The CudaDevice object to be used for the next pipeline operation
     """
-    return self.__policy.next_device()
+    return self.next_devices(1)[0]

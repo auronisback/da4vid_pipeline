@@ -161,7 +161,7 @@ class ColabFoldStep(PipelineStep):
 
   def __init__(self, model_dir: str, input_dir: str, output_dir: str, model_name: str,
                num_recycles: int = 3, zip_outputs: bool = False, num_models: int = 5,
-               msa_host_url: str = ColabFoldContainer.COLABFOLD_API_URL, max_parallel: int = 1,
+               msa_host_url: str = ColabFoldContainer.__COLABFOLD_API_URL, max_parallel: int = 1,
                client: docker.client.DockerClient = None):
     self.model_dir = model_dir
     self.input_dir = input_dir

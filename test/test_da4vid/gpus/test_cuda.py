@@ -50,3 +50,15 @@ class CudaDeviceManagerTest(unittest.TestCase):
     # By now, let's just ensure that the same device is returned if nothing
     # is allocated on the GPU
     self.assertEqual(manager.next_device(), manager.next_device())
+
+  @unittest.skipIf(not torch.cuda.is_available(), 'CUDA not available')
+  def test_cuda_device_manager_returns_specified_number_of_devices(self):
+    manager = CudaDeviceManager()
+    devices = manager.next_devices(len(manager.devices))
+    self.assertEqual(len(manager.devices), len(devices))
+
+  @unittest.skipIf(not torch.cuda.is_available(), 'CUDA not available')
+  def test_cuda_device_manager_returns_at_max_all_devices(self):
+    manager = CudaDeviceManager()
+    devices = manager.next_devices(len(manager.devices) + 1)
+    self.assertEqual(len(manager.devices), len(devices))

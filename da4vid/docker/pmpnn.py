@@ -1,10 +1,9 @@
-import os
-import shutil
-from typing import List, Tuple
+from typing import List
 
-from docker import DockerClient
+import docker
 
 from da4vid.docker.base import BaseContainer
+from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.model.proteins import Protein
 
 
@@ -27,18 +26,18 @@ class ProteinMPNNContainer(BaseContainer):
   # Internal directory to store jsonl assignment and dictionary files
   __JSONL_DIR = '/home/ProteinMPNN/run/jsonl'
 
-  def __init__(self, input_dir: str, output_dir: str, seqs_per_target: int, batch_size: int = 32,
-               sampling_temp: float = .1, backbone_noise: float = .0, backbones: List[Protein] | None = None,
-               image: str = 'da4vid/protein-mpnn:latest'):
+  def __init__(self, input_dir: str, output_dir: str, client: docker.DockerClient, gpu_manager: CudaDeviceManager,
+               seqs_per_target: int, batch_size: int = 32, sampling_temp: float = .1, backbone_noise: float = .0,
+               backbones: List[Protein] | None = None, image: str = 'da4vid/protein-mpnn:latest'):
     super().__init__(
       image=image,
       entrypoint='/bin/bash',
-      with_gpus=True,
       volumes={
         input_dir: ProteinMPNNContainer.INPUT_DIR,
         output_dir: ProteinMPNNContainer.OUTPUT_DIR
       },
-      detach=True
+      client=client,
+      gpu_manager=gpu_manager
     )
     self.input_dir = input_dir
     self.output_dir = output_dir
@@ -54,9 +53,9 @@ class ProteinMPNNContainer(BaseContainer):
   def add_fixed_chain(self, chain: str, positions: List[int] = None):
     self.__fixed_chains[chain] = positions
 
-  def run(self, client: DockerClient = None):
+  def run(self):
     self.commands = self.__create_commands()
-    return super()._run_container(client)
+    return super()._run_container()
 
   def __create_commands(self) -> List[str]:
     parsed_chains_jsonl = f'{ProteinMPNNContainer.__JSONL_DIR}/parsed_chains.jsonl'

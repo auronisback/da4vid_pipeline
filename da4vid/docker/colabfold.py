@@ -1,46 +1,47 @@
 import concurrent.futures
 import os
-import sys
+import threading
 from typing import List, Tuple
 
 import docker
 
 from da4vid.docker.base import BaseContainer
+from da4vid.gpus.cuda import CudaDeviceManager
 
 
 class ColabFoldContainer(BaseContainer):
   MODELS_FOLDER = '/colabfold/weights'
   INPUT_DIR = '/colabfold/inputs'
   OUTPUT_DIR = '/colabfold/outputs'
-  COPY_MSA_SCRIPT = '/colabfold/scripts'
-  COLABFOLD_BATCH_COMMAND = '/usr/local/envs/colabfold/bin/colabfold_batch'
+  __COPY_MSA_SCRIPT = '/colabfold/scripts/copy_msa.py'
+  __COLABFOLD_BATCH_COMMAND = '/usr/local/envs/colabfold/bin/colabfold_batch'
 
-  COLABFOLD_API_URL = 'https://api.colabfold.com'
-  MODEL_NAMES = ['auto', 'alphafold2', 'alphafold2_ptm,alphafold2_multimer_v1', 'alphafold2_multimer_v2',
-                 'alphafold2_multimer_v3', 'deepfold_v1']
+  __COLABFOLD_API_URL = 'https://api.colabfold.com'
+  __MODEL_NAMES = ['auto', 'alphafold2', 'alphafold2_ptm,alphafold2_multimer_v1', 'alphafold2_multimer_v2',
+                   'alphafold2_multimer_v3', 'deepfold_v1']
 
-  def __init__(self, model_dir: str, input_dir: str, output_dir: str,
+  def __init__(self, model_dir: str, input_dir: str, output_dir: str, client: docker.DockerClient,
                num_recycle: int = 5, zip_outputs: bool = False,
-               model_name: str = MODEL_NAMES[0], num_models: int = 5,
-               msa_host_url: str = COLABFOLD_API_URL, max_parallel: int = 1,
-               image: str = 'da4vid/colabfold:latest'):
+               model_name: str = __MODEL_NAMES[0], num_models: int = 5,
+               msa_host_url: str = __COLABFOLD_API_URL, max_parallel: int = 1,
+               image: str = 'da4vid/colabfold:latest', gpu_manager: CudaDeviceManager = CudaDeviceManager()):
     super().__init__(
       image=image,
       entrypoint='/bin/bash',
-      with_gpus=True,
       volumes={
         model_dir: ColabFoldContainer.MODELS_FOLDER,
         input_dir: ColabFoldContainer.INPUT_DIR,
         output_dir: ColabFoldContainer.OUTPUT_DIR
       },
-      detach=True
+      client=client,
+      gpu_manager=gpu_manager
     )
     self.num_recycle = num_recycle
     self.zip_outputs = zip_outputs
     # Checking valid model
-    if model_name not in ColabFoldContainer.MODEL_NAMES:
+    if model_name not in ColabFoldContainer.__MODEL_NAMES:
       raise ValueError(f'given model "{model_name}" is invalid '
-                       f'(choices: {", ".join(ColabFoldContainer.MODEL_NAMES)})')
+                       f'(choices: {", ".join(ColabFoldContainer.__MODEL_NAMES)})')
     self.input_dir = input_dir
     self.output_dir = output_dir
     self.model_name = model_name
@@ -50,27 +51,33 @@ class ColabFoldContainer(BaseContainer):
     # Setting number of max parallel jobs
     self.max_parallel = max_parallel
 
-  def run(self, client: docker.DockerClient = None):
-    # TODO: Differentiate containers in order to use different devices when refactoring with CUDAManager
-    container = super()._create_container(client)
+  def run(self):
+    res = True
+    chunks = self.__get_fasta_chunks()
     with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
-      chunks = self.__get_fasta_chunks()
-      for i, chunk in enumerate(chunks):
-        device = f'cuda:{i % 2}'
-        executor.submit(self.__run_on_fasta_list, fasta_basenames=chunk,
-                        container=container, device=device)
-    # Modifying permissions after works
-    super()._execute_command(container,
-                             f'/usr/bin/chmod 777 --recursive {ColabFoldContainer.OUTPUT_DIR}',
-                             file=sys.stdout)
-    super()._stop_container(container)
-    return True
+      futures = [executor.submit(self.__create_and_execute_container, fasta_basenames=chunk)
+                 for i, chunk in enumerate(chunks)]
+      for future in concurrent.futures.as_completed(futures):
+        res = future.result()
+        if not res:
+          break
+    return res
 
-  def __run_on_fasta_list(self, fasta_basenames: List[str], container, device: str):
-    print(f'Running predictions for {fasta_basenames} on {device}')
+  def __create_and_execute_container(self, fasta_basenames: List[str]) -> bool:
+    container, device = super()._create_container()
+    print(f'[{threading.current_thread().name}] Running predictions for {fasta_basenames} on {device.name}')
+    res = self.__run_on_fasta_list(fasta_basenames, container)
+    res &= super()._execute_command(container,
+                                    f'/usr/bin/chmod 777 --recursive {ColabFoldContainer.OUTPUT_DIR}')
+    super()._stop_container(container)
+    return res
+
+  def __run_on_fasta_list(self, fasta_basenames: List[str], container) -> bool:
     for fasta_basename in fasta_basenames:
-      for command in self.__commands_for_single_fasta(fasta_basename):
-        super()._execute_command(container, command, file=sys.stdout)
+      res = self.__execute_commands_for_single_fasta(container, fasta_basename)
+      if not res:
+        return False
+    return True
 
   def __get_fasta_chunks(self) -> List[List[str]]:
     files = [f for f in os.listdir(self.input_dir) if f.endswith('.fa')]
@@ -80,21 +87,27 @@ class ColabFoldContainer(BaseContainer):
     start = 0
     for i in range(self.max_parallel):
       if i < rem:
-        ff.append(files[start:start+n+1])
-        start = start+n+1
+        ff.append(files[start:start + n + 1])
+        start = start + n + 1
       else:
-        ff.append(files[start:start+n])
+        ff.append(files[start:start + n])
         start = start + n
     return ff
 
-  def __commands_for_single_fasta(self, f: str) -> List[str]:
-    return [
+  def __execute_commands_for_single_fasta(self, container, f: str) -> bool:
+    res = True
+    commands = [
       self.__create_msa_fasta_command(f),
       self.__msa_only_command(f),
       self.__copy_msa_command(f),
       self.__remove_msa_fasta_command(f),
       self.__prediction_command(f),
     ]
+    for command in commands:
+      res &= super()._execute_command(container, command)
+      if not res:
+        break
+    return res
 
   def __create_msa_fasta_command(self, f: str) -> str:
     input_fasta, _ = self.__get_input_and_output_folder(f)
@@ -104,15 +117,15 @@ class ColabFoldContainer(BaseContainer):
   def __msa_only_command(self, f: str) -> str:
     _, output_folder = self.__get_input_and_output_folder(f)
     tmp_fasta = self.__get_tmp_msa_fasta_path(f)
-    return f'{self.COLABFOLD_BATCH_COMMAND} --msa-only {tmp_fasta} {output_folder}'
+    return f'{self.__COLABFOLD_BATCH_COMMAND} --msa-only {tmp_fasta} {output_folder}'
 
   def __copy_msa_command(self, f: str) -> str:
     input_fasta, output_folder = self.__get_input_and_output_folder(f)
-    return f'python {self.COPY_MSA_SCRIPT} {input_fasta} {output_folder} 1'
+    return f'python {self.__COPY_MSA_SCRIPT} {input_fasta} {output_folder} 1'
 
   def __prediction_command(self, f: str) -> str:
     input_fasta, output_folder = self.__get_input_and_output_folder(f)
-    return (f'{self.COLABFOLD_BATCH_COMMAND} '
+    return (f'{self.__COLABFOLD_BATCH_COMMAND} '
             f'--data {self.MODELS_FOLDER} '
             f'--model-type {self.model_name} '
             f'--num-recycle {self.num_recycle} '

@@ -2,10 +2,12 @@ import os
 import shutil
 from typing import Tuple
 
+import docker
 from docker.client import DockerClient
 from typing_extensions import Self
 
 from da4vid.docker.base import BaseContainer
+from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.model.proteins import Protein, Chain
 
 
@@ -209,15 +211,17 @@ class RFdiffusionContainer(BaseContainer):
   INPUT_DIR = '/app/RFdiffusion/inputs'
   OUTPUT_DIR = '/app/RFdiffusion/outputs'
 
-  def __init__(self, model_dir: str, output_dir: str, input_pdb: str, contig_map: RFdiffusionContigMap,
-               input_dir: str = None, num_designs: int = 3, diffuser_T: int = 50,
-               partial_T: int = 20, potentials: RFdiffusionPotentials = None,
-               image: str = 'da4vid/rfdiffusion:latest'):
+  def __init__(self, model_dir: str, output_dir: str, input_pdb: str, client: docker.DockerClient,
+               gpu_manager: CudaDeviceManager, contig_map: RFdiffusionContigMap, input_dir: str = None,
+               num_designs: int = 3, diffuser_T: int = 50, partial_T: int = 20,
+               potentials: RFdiffusionPotentials = None, image: str = 'da4vid/rfdiffusion:latest'):
     """
     Creates a new instance of this container, without starting it.
     :param model_dir: Directory where RFdiffusion model weights are stored
     :param output_dir: The output folder diffusions
     :param input_pdb: The PDB input to diffuse
+    :param client: The docker client used to create container
+    :param gpu_manager: The CUDA device manager object to obtain GPUS
     :param contig_map: The map with the contigs
     :param input_dir: The input directory used by the container
     :param num_designs: The number of output diffusions
@@ -229,13 +233,13 @@ class RFdiffusionContainer(BaseContainer):
     super().__init__(
       image=image,
       entrypoint='/bin/bash',
-      with_gpus=True,
       volumes={
         model_dir: RFdiffusionContainer.MODELS_FOLDER,
         input_dir: RFdiffusionContainer.INPUT_DIR,
         output_dir: RFdiffusionContainer.OUTPUT_DIR
       },
-      detach=True
+      client=client,
+      gpu_manager=gpu_manager
     )
     self.model_dir = model_dir
     self.input_dir = input_dir
@@ -255,7 +259,7 @@ class RFdiffusionContainer(BaseContainer):
     self.commands = [self.__create_command()]
     # Modifying permissions of created files
     self.commands.append(f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}')
-    return super()._run_container(client)
+    return super()._run_container()
 
   def __create_command(self) -> str:
     cmd = f'python {RFdiffusionContainer.SCRIPT_LOCATION}'
