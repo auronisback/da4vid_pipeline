@@ -1,18 +1,23 @@
 import os.path
 import shutil
 import unittest
+import warnings
 
 import docker
 import dotenv
 
 from da4vid.docker.base import BaseContainer
 from da4vid.docker.colabfold import ColabFoldContainer
+from da4vid.gpus.cuda import CudaDeviceManager
 from test.cfg import RESOURCES_ROOT, DOTENV_FILE
 from test.test_da4vid.docker.helpers import duplicate_image, remove_duplicate_image
 
 
 class ColabFoldContainerTest(unittest.TestCase):
   def setUp(self):
+    # Ignoring docker SDK warnings (still an unresolved issue in the SDK)
+    warnings.simplefilter('ignore', ResourceWarning)
+    self.gpu_manager = CudaDeviceManager()
     self.client = docker.from_env()
     duplicate_image(self.client, 'da4vid/colabfold', 'colabfold_duplicate')
     self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['COLABFOLD_MODEL_FOLDER']
@@ -38,6 +43,8 @@ class ColabFoldContainerTest(unittest.TestCase):
       output_dir=output_dir,
       num_models=2,
       num_recycle=1,
+      client=self.client,
+      gpu_manager=self.gpu_manager
     )
     with self.assertRaises(BaseContainer.DockerImageNotFoundException):
       cf.run()
@@ -51,7 +58,9 @@ class ColabFoldContainerTest(unittest.TestCase):
       output_dir=output_dir,
       num_models=2,
       num_recycle=1,
-    ).run(client=self.client)
+      client=self.client,
+      gpu_manager=self.gpu_manager
+    ).run()
     self.assertTrue(res, 'Container exited unsuccessfully')
     basenames = [f for f in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, f))]
     output_fastas = [os.path.join(output_dir, f) for f in basenames]
@@ -71,7 +80,9 @@ class ColabFoldContainerTest(unittest.TestCase):
       output_dir=output_dir,
       num_models=2,
       num_recycle=1,
-    ).run(client=self.client)
+      client=self.client,
+      gpu_manager=self.gpu_manager
+    ).run()
     self.assertTrue(res, 'Container exited unsuccessfully')
     basenames = [f for f in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, f))]
     output_fastas = [os.path.join(output_dir, f) for f in basenames]
@@ -89,7 +100,9 @@ class ColabFoldContainerTest(unittest.TestCase):
       input_dir=input_dir,
       output_dir=output_dir,
       num_models=2,
-      num_recycle=1
+      num_recycle=1,
+      client=self.client,
+      gpu_manager=self.gpu_manager
     ).run()
     expected = {'sample_1000': 4, 'sample_1001': 6, 'sample_1002': 2}
     self.assertTrue(res, 'Container exited unsuccessfully')
@@ -111,7 +124,9 @@ class ColabFoldContainerTest(unittest.TestCase):
       output_dir=output_dir,
       num_models=2,
       num_recycle=1,
-      max_parallel=4
+      max_parallel=4,
+      client=self.client,
+      gpu_manager=self.gpu_manager
     ).run()
     expected = {'sample_1000': 4, 'sample_1001': 6, 'sample_1002': 2,
                 'sample_1003': 4, 'sample_1004': 2, 'sample_1005': 6}
@@ -124,3 +139,17 @@ class ColabFoldContainerTest(unittest.TestCase):
       predictions = [f for f in os.listdir(output_fasta) if f.endswith('.pdb')]
       self.assertEqual(expected[basename], len(predictions),
                        f'Invalid number of predictions: {len(predictions)} (exp: {expected[basename]})')
+
+  def test_should_return_false_if_container_execution_fails(self):
+    input_dir = os.path.join(self.resource_path, 'single', 'inputs')
+    output_dir = os.path.join(self.resource_path, 'single', 'outputs')
+    res = ColabFoldContainer(
+      model_dir=self.model_weights,
+      input_dir=input_dir,
+      output_dir=output_dir,
+      num_models=2,
+      num_recycle=-1,  # Invalid number of recycles
+      client=self.client,
+      gpu_manager=self.gpu_manager
+    ).run()
+    self.assertFalse(res, 'Colabfold container should have exited unsuccessfully')

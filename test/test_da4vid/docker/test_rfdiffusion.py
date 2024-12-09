@@ -1,12 +1,14 @@
 import os.path
 import shutil
 import unittest
+import warnings
 
 import docker
 import dotenv
 
 from da4vid.docker.base import BaseContainer
 from da4vid.docker.rfdiffusion import RFdiffusionContigMap, RFdiffusionPotentials, RFdiffusionContainer
+from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.model.proteins import Protein
 from da4vid.io.pdb_io import read_from_pdb
 from test.cfg import RESOURCES_ROOT, DOTENV_FILE
@@ -271,6 +273,8 @@ class RFdiffusionPotentialsTest(unittest.TestCase):
 class RFdiffusionTest(unittest.TestCase):
 
   def setUp(self):
+    # Ignoring docker SDK warnings (still an unresolved issue in the SDK)
+    warnings.simplefilter('ignore', ResourceWarning)
     self.resources_path = os.path.join(RESOURCES_ROOT, 'docker_test', 'rfdiffusion_test')
     self.input_dir = os.path.join(self.resources_path, 'inputs')
     os.makedirs(self.input_dir, exist_ok=True)
@@ -279,6 +283,7 @@ class RFdiffusionTest(unittest.TestCase):
     self.input_pdb = os.path.join(self.resources_path, 'rfdiffusion_test.pdb')
     self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['RFDIFFUSION_MODEL_FOLDER']
     self.client = docker.from_env()
+    self.gpu_manager = CudaDeviceManager()
     duplicate_image(self.client, 'da4vid/rfdiffusion', 'rfdiff_duplicate')
 
   def tearDown(self):
@@ -294,7 +299,9 @@ class RFdiffusionTest(unittest.TestCase):
       input_pdb=self.input_pdb,
       output_dir=self.output_dir,
       model_dir=self.model_weights,
-      contig_map=RFdiffusionContigMap()
+      contig_map=RFdiffusionContigMap(),
+      client=self.client,
+      gpu_manager=self.gpu_manager
     )
     with self.assertRaises(BaseContainer.DockerImageNotFoundException):
       rfdiff.run()
@@ -312,7 +319,9 @@ class RFdiffusionTest(unittest.TestCase):
       model_dir=self.model_weights,
       contig_map=contigs,
       num_designs=3,
-      diffuser_T=15
+      diffuser_T=15,
+      client=self.client,
+      gpu_manager=self.gpu_manager
     ).run()
     self.assertTrue(res, 'RFdiffusion container stopped with errors!')
     diffused = [f for f in os.listdir(self.output_dir) if f.endswith('.pdb')]
@@ -332,7 +341,9 @@ class RFdiffusionTest(unittest.TestCase):
       model_dir=self.model_weights,
       contig_map=contigs,
       num_designs=2,
-      diffuser_T=15
+      diffuser_T=15,
+      client=self.client,
+      gpu_manager=self.gpu_manager
     ).run()
     self.assertTrue(res, 'RFdiffusion container stopped with errors!')
     diffused = [f for f in os.listdir(self.output_dir) if f.endswith('.pdb')]

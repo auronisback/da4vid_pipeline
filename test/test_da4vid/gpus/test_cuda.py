@@ -28,20 +28,20 @@ class CudaDeviceManagerTest(unittest.TestCase):
     manager = CudaDeviceManager()
     self.assertEqual(torch.cuda.device_count(), len(manager.devices))
     # Asserting circularity
-    self.assertEqual(manager.devices[0], manager.next_device())
-    self.assertEqual(manager.devices[1], manager.next_device())
-    self.assertEqual(manager.devices[0], manager.next_device())
-    self.assertEqual(manager.devices[1], manager.next_device())
+    self.assertEqual(manager.devices[0], manager.next_devices())
+    self.assertEqual(manager.devices[1], manager.next_devices())
+    self.assertEqual(manager.devices[0], manager.next_devices())
+    self.assertEqual(manager.devices[1], manager.next_devices())
 
   @unittest.skipIf(not torch.cuda.is_available(), 'CUDA not available')
   def test_cuda_device_manager_creation_with_explicit_round_robin_policy(self):
     manager = CudaDeviceManager('round_robin')
     self.assertEqual(torch.cuda.device_count(), len(manager.devices))
     # Asserting circularity
-    self.assertEqual(manager.devices[0], manager.next_device())
-    self.assertEqual(manager.devices[1], manager.next_device())
-    self.assertEqual(manager.devices[0], manager.next_device())
-    self.assertEqual(manager.devices[1], manager.next_device())
+    self.assertEqual(manager.devices[0], manager.next_devices())
+    self.assertEqual(manager.devices[1], manager.next_devices())
+    self.assertEqual(manager.devices[0], manager.next_devices())
+    self.assertEqual(manager.devices[1], manager.next_devices())
 
   @unittest.skipIf(not torch.cuda.is_available(), 'CUDA not available')
   def test_cuda_device_manager_creation_with_most_free_device_policy(self):
@@ -49,4 +49,4 @@ class CudaDeviceManagerTest(unittest.TestCase):
     self.assertEqual(torch.cuda.device_count(), len(manager.devices))
     # By now, let's just ensure that the same device is returned if nothing
     # is allocated on the GPU
-    self.assertEqual(manager.next_device(), manager.next_device())
+    self.assertEqual(manager.next_devices(), manager.next_devices())
