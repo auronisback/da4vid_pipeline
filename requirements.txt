@@ -77,6 +77,7 @@ overrides==7.7.0
 packaging==24.1
 pandocfilters==1.5.1
 parso==0.8.4
+pathvalidate==3.2.1
 pexpect==4.9.0
 platformdirs==4.3.3
 prometheus_client==0.20.0

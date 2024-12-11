@@ -8,7 +8,7 @@ from typing_extensions import Self
 
 from da4vid.docker.base import BaseContainer
 from da4vid.gpus.cuda import CudaDeviceManager
-from da4vid.model.proteins import Protein, Chain
+from da4vid.model.proteins import Protein, Chain, Epitope
 
 
 class RFdiffusionContigMap:
@@ -128,8 +128,23 @@ class RFdiffusionContigMap:
     return provide_seq + ']'
 
   @staticmethod
-  def partial_diffusion_around_epitope(protein: Protein, epitope: Tuple[int, int]):
-    return RFdiffusionContigMap(protein).full_diffusion().add_provide_seq(*epitope)
+  def partial_diffusion_around_epitope(protein: Protein, epitope: Epitope):
+    """
+    Creates the contig map for a partial diffusion around a given epitope of
+    the given protein.
+    :param protein: The protein on which extract contigs
+    :param epitope: The epitope which will be fixed
+    :return: The RFdiffusionContigMap for the partial diffusion around the epitope
+    :raise ValueError: If the given epitope chain is not present in the protein
+    """
+    offset = 0
+    for chain in protein.chains:
+      if chain.name == epitope.chain:
+        start = offset + epitope.start
+        end = offset + epitope.end
+        return RFdiffusionContigMap(protein).full_diffusion().add_provide_seq(start, end)
+      offset += len(chain.residues)
+    raise ValueError(f'Epitope chain not found in protein: {epitope.chain}')
 
 
 class RFdiffusionPotentials:
@@ -205,6 +220,8 @@ class RFdiffusionPotentials:
 
 
 class RFdiffusionContainer(BaseContainer):
+  DEFAULT_IMAGE = 'da4vid/rfdiffusion:latest'
+
   # Container local folders
   SCRIPT_LOCATION = '/app/RFdiffusion/scripts/run_inference.py'
   MODELS_FOLDER = '/app/RFdiffusion/models'
@@ -214,7 +231,7 @@ class RFdiffusionContainer(BaseContainer):
   def __init__(self, model_dir: str, output_dir: str, input_pdb: str, client: docker.DockerClient,
                gpu_manager: CudaDeviceManager, contig_map: RFdiffusionContigMap, input_dir: str = None,
                num_designs: int = 3, diffuser_T: int = 50, partial_T: int = 20,
-               potentials: RFdiffusionPotentials = None, image: str = 'da4vid/rfdiffusion:latest'):
+               potentials: RFdiffusionPotentials = None, image: str = DEFAULT_IMAGE):
     """
     Creates a new instance of this container, without starting it.
     :param model_dir: Directory where RFdiffusion model weights are stored
@@ -251,11 +268,12 @@ class RFdiffusionContainer(BaseContainer):
     self.partial_T = partial_T
     self.potentials = potentials
 
-  def run(self, client: DockerClient = None) -> bool:
+  def run(self) -> bool:
     if self.input_dir is None:
       raise ValueError(f'Input folder not specified')
-    # Moving input PDB to inputs folder
-    shutil.copy2(self.input_pdb, self.input_dir)
+    # Moving input PDB to inputs folder if needed
+    if self.input_dir != os.path.dirname(self.input_pdb):
+      shutil.copy2(self.input_pdb, self.input_dir)
     self.commands = [self.__create_command()]
     # Modifying permissions of created files
     self.commands.append(f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}')

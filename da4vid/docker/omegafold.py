@@ -10,13 +10,15 @@ from da4vid.gpus.cuda import CudaDeviceManager
 
 
 class OmegaFoldContainer(BaseContainer):
+  DEFAULT_IMAGE = 'da4vid/omegafold:latest'
+
   MODELS_FOLDER = '/root/.cache/omegafold_ckpt'
   INPUT_DIR = '/Omegafold/run/inputs'
   OUTPUT_DIR = '/Omegafold/run/outputs'
 
   def __init__(self, model_dir, input_dir, output_dir, client: docker.DockerClient, gpu_manager: CudaDeviceManager,
                model_weights: str = "2", num_recycles: int = 5, max_parallel: int = 1,
-               image: str = 'da4vid/omegafold:latest'):
+               image: str = DEFAULT_IMAGE):
     super().__init__(
       image=image,
       entrypoint='/bin/bash',

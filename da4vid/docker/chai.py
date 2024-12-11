@@ -12,14 +12,16 @@ from da4vid.model import Protein
 
 
 class ChaiContainer(BaseContainer):
+  DEFAULT_IMAGE = 'da4vid/chai-lab:latest'
 
   INPUT_DIR = '/chai-lab/inputs'
   OUTPUT_DIR = '/chai-lab/outputs'
 
   def __init__(self, input_dir: str, output_dir: str, client: docker.DockerClient, gpu_manager: CudaDeviceManager,
-               trunk_recycles: int, diffusion_steps: int, esm_embeddings: bool, max_parallel: int = 1):
+               trunk_recycles: int, diffusion_steps: int, esm_embeddings: bool, max_parallel: int = 1,
+               image: str = DEFAULT_IMAGE):
     super().__init__(
-      image='ameg/chai_gradio',
+      image=image,
       entrypoint='/bin/bash',
       volumes={
         input_dir: self.INPUT_DIR,

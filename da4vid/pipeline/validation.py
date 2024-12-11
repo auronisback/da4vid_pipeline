@@ -3,45 +3,52 @@ import shutil
 import sys
 from typing import List
 
-import docker.client
 import torch
-from docker import DockerClient
 from tqdm import tqdm
 
 from da4vid.docker.colabfold import ColabFoldContainer
 from da4vid.docker.omegafold import OmegaFoldContainer
+from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_from_pdb
 from da4vid.io.fasta_io import write_fasta
 from da4vid.metrics import evaluate_plddt, rog
 from da4vid.model.proteins import Proteins
-from da4vid.model.samples import SampleSet, Fold, Sample
-from da4vid.pipeline.steps import PipelineStep
+from da4vid.model.samples import SampleSet, Fold
+from da4vid.pipeline.steps import PipelineStep, DockerStep
 
 
-class ValidationStep(PipelineStep):
+class OmegaFoldStep(DockerStep):
+  class OmegaFoldConfig:
+    def __init__(self, num_recycles: int = 5, model_weights: str = '2'):
+      """
+      Creates a configuration for the OmegaFold step.
+      :param num_recycles: The number of recycles for the model. Defaults to 5
+      :param model_weights: The version of weights used by the model. Defaults to the
+                            most recent model, i.e. "2"
+      """
+      self.num_recycles = num_recycles
+      self.model_weights = model_weights
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
-    pass
+    def __str__(self):
+      return (f'omegafold:\n '
+              f' - num_recycles: {self.num_recycles}\n'
+              f' - model_weights: {self.model_weights}\n')
 
-
-class OmegaFoldStep(PipelineStep):
-
-  def __init__(self, model_dir: str, input_dir: str, output_dir: str,
-               num_recycles: int, model_weights: str, device: str, client: DockerClient = None,
-               max_parallel: int = 1):
-    self.input_dir = input_dir
-    self.output_dir = output_dir
-    self.num_recycles = num_recycles
-    self.model_weights = model_weights
-    self.device = device
-    self.client = client
+  def __init__(self, model_dir: str, gpu_manager: CudaDeviceManager,
+               config: OmegaFoldConfig, max_parallel: int = 1, **kwargs):
+    super().__init__(**kwargs)
+    self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
+    self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
+    self.gpu_manager = gpu_manager
+    self.config = config
     self.container = OmegaFoldContainer(
       model_dir=model_dir,
       input_dir=self.input_dir,
-      output_dir=os.path.join(self.output_dir),
-      num_recycles=self.num_recycles,
-      model_weights=self.model_weights,
-      device=self.device,
+      output_dir=self.output_dir,
+      num_recycles=self.config.num_recycles,
+      model_weights=self.config.model_weights,
+      client=self.client,
+      gpu_manager=self.gpu_manager,
       max_parallel=max_parallel
     )
 
@@ -55,11 +62,10 @@ class OmegaFoldStep(PipelineStep):
     # Starting OmegaFold
     print('Running OmegaFold for structure prediction')
     print(f' - input folder: {self.input_dir}')
-    print(f' - output folder: {self.output_dir}')
-    print(f' - model weights: {self.model_weights}')
-    print(f' - num_recycles: {self.num_recycles}')
-    print(f' - running on: {self.device}')
-    if not self.container.run(self.client):
+    print(f' - input folder: {self.output_dir}')
+    print(f' - model weights: {self.config.model_weights}')
+    print(f' - num_recycles: {self.config.num_recycles}')
+    if not self.container.run():
       raise ValueError('OmegaFold step failed')
     # Merging data
     self.__merge_data(sample_set)
@@ -79,7 +85,7 @@ class OmegaFoldStep(PipelineStep):
       sequence_name = bn[:-4]
       sample = sample_set.get_sample_by_name(orig_name)
       sequence = sample.get_sequence_by_name(sequence_name)
-      plddt = evaluate_plddt(folded, plddt_prop='omegafold.plddt', device=self.device)
+      plddt = evaluate_plddt(folded, plddt_prop='omegafold.plddt', device=self.gpu_manager.next_device().name)
       Proteins.merge_sequence_with_structure(sequence.protein, folded)
       sequence.add_folds(
         Fold(
@@ -94,8 +100,8 @@ class OmegaFoldStep(PipelineStep):
 
 
 class SequenceFilteringStep(PipelineStep):
-  def __init__(self, model: str, plddt_threshold: float, avg_cutoff: float, rog_cutoff: float = None,
-               max_samples: int = None, device: str = 'cpu'):
+  def __init__(self, model: str, plddt_threshold: float, average_cutoff: float = None, rog_cutoff: float = None,
+               max_samples: int = None, gpu_manager: CudaDeviceManager = None, **kwargs):
     """
     Initializes the sequence filtering step, evaluating the average pLDDT
     of folding predictions for all samples in each original backbone protein
@@ -103,18 +109,21 @@ class SequenceFilteringStep(PipelineStep):
     also cut off according to their RoG, in ascending order.
     :param model: The model used to retrieve pLDDT predictions
     :param plddt_threshold: The threshold on samples average pLDDT values
-    :param avg_cutoff: The number of samples used to evaluate average pLDDT
+    :param average_cutoff: The number of samples used to evaluate average pLDDT. If None, all
+                       samples for the backbone will be used
     :param rog_cutoff: The cutoff for RoG filtering. If None, no cutoff will be applied
     :param max_samples: The maximum number of samples to retain for each original protein. If None, no
                         limit to the number of samples will be used. Defaults to None
-    :param device: The device on which execute calculations
+    :param gpu_manager: The CUDA device manager used to assign GPUs. If not given, CPU will be used
+                       instead
     """
+    super().__init__(**kwargs)
     self.model = model
     self.plddt_threshold = plddt_threshold
-    self.avg_cutoff = avg_cutoff
+    self.average_cutoff = average_cutoff
     self.rog_cutoff = rog_cutoff
     self.max_samples = max_samples
-    self.device = device
+    self.device = gpu_manager.next_device().name if gpu_manager else 'cpu'
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
     """
@@ -138,18 +147,18 @@ class SequenceFilteringStep(PipelineStep):
   def __filter_by_plddt(self, folds: List[Fold]) -> List[Fold]:
     if not folds:
       return []
-    plddts = evaluate_plddt([f.protein for f in folds], f'{self.model}.plddt')
+    plddts = evaluate_plddt([f.protein for f in folds], f'{self.model}.plddt', self.device)
     mean_plddt = torch.mean(plddts)
     if mean_plddt >= self.plddt_threshold:
       # Adding pLDDT metric to fold
       for plddt, fold in zip(plddts, folds):
         fold.metrics.add_metric('plddt', plddt)
       folds.sort(key=lambda f: f.metrics.get_metric('plddt'), reverse=True)
-      return folds[:self.avg_cutoff]
+      return folds[:self.average_cutoff if self.average_cutoff else len(folds)]
     return []
 
   def __filter_by_rog(self, folds: List[Fold]) -> List[Fold]:
-    rog([fold.protein for fold in folds])  # Evaluating RoG
+    rog([fold.protein for fold in folds], device=self.device)  # Evaluating RoG
     for fold in folds:
       fold.metrics.add_metric('rog', fold.protein.get_prop('rog'))
     folds.sort(key=lambda f: f.metrics.get_metric('rog'))
@@ -157,28 +166,48 @@ class SequenceFilteringStep(PipelineStep):
     return folds
 
 
-class ColabFoldStep(PipelineStep):
+class ColabFoldStep(DockerStep):
+  class ColabFoldConfig:
+    def __init__(self, num_recycles: int = 3, model_name: str = ColabFoldContainer.MODEL_NAMES[0],
+                 num_models: int = 5, msa_host_url: str = ColabFoldContainer.COLABFOLD_API_URL,
+                 zip_outputs: bool = False):
+      """
+      Creates a new configuration for the subsequent colabfold step.
+      :param num_recycles: The number of recycles for predictions. Defaults to 3
+      :param model_name: The name of the used model. Defaults to the first one defined in the container
+      :param num_models: The number of models used for the ranking. Defaults to 5
+      :param msa_host_url: The URL for the MSA server. Defaults to the standard URL of alphafold
+      :param zip_outputs: Whether the inputs should be compressed. Defaults to False (no compression)
+      """
+      self.num_recycles = num_recycles
+      self.model_name = model_name
+      self.num_models = num_models
+      self.msa_host_url = msa_host_url
+      self.zip_outputs = zip_outputs
 
-  def __init__(self, model_dir: str, input_dir: str, output_dir: str, model_name: str,
-               num_recycles: int = 3, zip_outputs: bool = False, num_models: int = 5,
-               msa_host_url: str = ColabFoldContainer.__COLABFOLD_API_URL, max_parallel: int = 1,
-               client: docker.client.DockerClient = None):
+    def __str__(self):
+      return (f'colabfold:\n'
+              f' - num_recycles: {self.num_recycles}\n'
+              f' - model_name: {self.model_name}\n'
+              f' - num_models: {self.num_models}\n'
+              f' - msa_host_url: {self.msa_host_url}\n'
+              f' - zip_outputs: {self.zip_outputs}\n')
+
+  def __init__(self, model_dir: str, gpu_manager: CudaDeviceManager,
+               config: ColabFoldConfig, max_parallel: int = 1, **kwargs):
+    super().__init__(**kwargs)
+    self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
+    self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
     self.model_dir = model_dir
-    self.input_dir = input_dir
-    self.output_dir = output_dir
-    self.num_recycles = num_recycles
-    self.zip_outputs = zip_outputs
-    self.model_name = model_name
-    self.num_models = num_models
-    self.msa_host_url = msa_host_url
+    self.config = config
+    self.gpu_manager = gpu_manager
     self.max_parallel = max_parallel
-    self.client = client
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
     tmp_input_folder = self.__create_tmp_input_folder()
     self.__create_input_fastas(sample_set, tmp_input_folder)
     container = self.__create_container(tmp_input_folder)
-    if not container.run(self.client):
+    if not container.run():
       raise RuntimeError('ColabFold container failed')
     new_set = self.__create_new_sample_set(sample_set)
     self.__remove_tmp_input_folder(tmp_input_folder)
@@ -186,15 +215,18 @@ class ColabFoldStep(PipelineStep):
 
   def __create_container(self, input_dir: str) -> ColabFoldContainer:
     return ColabFoldContainer(
+      image=self.image,
       model_dir=self.model_dir,
       input_dir=input_dir,
       output_dir=self.output_dir,
-      num_recycle=self.num_recycles,
-      model_name=self.model_name,
-      zip_outputs=self.zip_outputs,
-      num_models=self.num_models,
-      msa_host_url=self.msa_host_url,
-      max_parallel=self.max_parallel
+      num_recycle=self.config.num_recycles,
+      model_name=self.config.model_name,
+      zip_outputs=self.config.zip_outputs,
+      num_models=self.config.num_models,
+      msa_host_url=self.config.msa_host_url,
+      max_parallel=self.max_parallel,
+      client=self.client,
+      gpu_manager=self.gpu_manager
     )
 
   def __create_tmp_input_folder(self) -> str:

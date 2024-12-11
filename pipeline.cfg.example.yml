@@ -1,0 +1,71 @@
+PIPELINE_NAME:
+    folder: /path/to/pipeline/run/folder
+    antigen: /path/to/antigen.pdb
+    epitope: <chain><start>-<end>
+    steps:
+    -   1ST ITERATION NAME:
+            steps:
+            -   generation:
+                steps:
+                -   rfdiffusion:
+                        num_designs: 2000
+                        partial_T: 23
+                        contacts_threshold: 5
+                        rog_potential: 12
+                -   backbone_filtering:
+                        ss_threshold: 5
+                        rog_cutoff: 10
+                -   proteinmpnn:
+                        seqs_per_target: 2000
+                        sampling_temp: .5
+                        backbone_noise: .20
+                        batch_size: 200
+            -   validation:
+                    steps:
+                    -   omegafold:
+                            num_recycles: 5
+                            model_weights: 2
+                    -   sequence_filtering:
+                            model: 'omegafold'
+                            plddt_threshold: 85
+                            average_cutoff: 20
+                            rog_cutoff: 10
+                            max_samples: 10
+                    -   colabfold:
+                            num_recycles: 5
+                            model_name: 'alphafold2'
+                            num_models: 5
+                    -   sequence_filtering:
+                            model: 'colabfold'
+                            plddt_threshold: 85
+                            average_cutoff: 20
+                            max_samples: 10
+    -   2ND ITERATION NAME:
+            steps:
+            -   generation:
+                    steps:
+                    -   proteinmpnn:
+                            seqs_per_target: 2000
+                            sampling_temp: .2
+                            backbone_noise: .0
+                            batch_size: 200
+            -   validation:
+                    steps:
+                    -   omegafold:
+                            num_recycles: 5
+                            model_weights: 2
+                    -   sequence_filtering:
+                            model: 'omegafold'
+                            plddt_threshold: 85
+                            average_cutoff: 20
+                            rog_cutoff: 10
+                            max_samples: 10
+                    -   colabfold:
+                            num_recycles: 5
+                            model_name: 'alphafold2'
+                            num_models: 5
+                    -   sequence_filtering:
+                            model: 'colabfold'
+                            plddt_threshold: 85
+                            average_cutoff: 20
+                            max_samples: 10

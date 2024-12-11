@@ -1,14 +1,19 @@
+import docker
+
 from da4vid.docker.base import BaseContainer
+from da4vid.gpus.cuda import CudaDeviceManager
 
 
 class MasifContainer(BaseContainer):
-  def __init__(self):
+  DEFAULT_IMAGE = 'da4vid/masif:latest'
+
+  def __init__(self, client: docker.DockerClient, gpu_manager: CudaDeviceManager, image: str = DEFAULT_IMAGE):
     super().__init__(
-      image='ameg/masif:latest',
+      image=image,
       entrypoint='/bin/bash',
       volumes={
         
       },
-      with_gpus=True,
-      detach=True
+      client=client,
+      gpu_manager=gpu_manager
     )

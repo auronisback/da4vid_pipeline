@@ -24,7 +24,7 @@ class SequenceFilteringStepTest(unittest.TestCase):
     filtered_set = SequenceFilteringStep(
       model='omegafold',
       plddt_threshold=25,
-      avg_cutoff=3
+      average_cutoff=3
     ).execute(sample_set)
     self.assertEqual(9, len(filtered_set.samples()))
     for sample in filtered_set.samples():

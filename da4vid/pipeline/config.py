@@ -1,259 +1,260 @@
 import os
+from typing import List, Dict, Any
 
+import docker
+import dotenv
 import yaml
 
+from da4vid.docker.colabfold import ColabFoldContainer
+from da4vid.docker.masif import MasifContainer
+from da4vid.docker.omegafold import OmegaFoldContainer
+from da4vid.docker.pmpnn import ProteinMPNNContainer
+from da4vid.docker.rfdiffusion import RFdiffusionContainer
+from da4vid.gpus.cuda import CudaDeviceManager
+from da4vid.io import read_from_pdb
+from da4vid.model.proteins import Protein, Epitope
+from da4vid.model.samples import Sample
+from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep
+from da4vid.pipeline.steps import CompositeStep, PipelineStep, PipelineRootStep
+from da4vid.pipeline.validation import OmegaFoldStep, SequenceFilteringStep, ColabFoldStep
 
-class RunConfig:
+
+class StaticConfig:
   """
-  Configuration for a single run.
+  Stores the static configuration of the pipeline, such as folders in which models
+  are stored, image names and gpu managers.
   """
 
-  class __RFdiffusionConfig:
-    """
-    Class encapsulating the configuration for RFdiffusion.
-    """
+  instance = None
 
-    def __init__(self, run, model_dir: str, num_designs: int, partial_T: int,
-                 contacts_threshold: float, rog_potential: float):
-      self.run = run
-      self.model_dir = model_dir
-      self.num_designs = num_designs
-      self.partial_T = partial_T
-      self.contacts_threshold = contacts_threshold
-      self.rog_potential = rog_potential
+  def __init__(self, client: docker.DockerClient, gpu_manager: CudaDeviceManager,
+               rfdiffusion_models_dir: str, omegafold_models_dir: str, colabfold_models_dir: str,
+               rfdiffusion_image: str, protein_mpnn_image: str, omegafold_image: str, colabfold_image: str,
+               masif_image: str, omegafold_max_parallel: int, colabfold_max_parallel: int):
+    """
+    Creates a new instance of static configuration of the pipeline. This should not be invoked
+    directly, but an instance should be created using the <em>load_from_yaml</em> static method.
+    :param client: The client used to query Docker APIs
+    :param gpu_manager: The CUDA device manager used to assign GPU resources to containers
+    :param rfdiffusion_models_dir: Directory where RFdiffusion models are locally stored
+    :param omegafold_models_dir: Directory where Omegafold models are locally stored
+    :param colabfold_models_dir: Directory where Colabfold models are locally stored
+    :param rfdiffusion_image: Tag of the RFdiffusion docker image
+    :param protein_mpnn_image: Tag of the ProteinMPNN docker image
+    :param omegafold_image: Tag of the OmegaFold docker image
+    :param colabfold_image: Tag of the Colabfold docker image
+    :param masif_image: Tag of the MaSIF docker image
+    :param omegafold_max_parallel: Number of parallel instances for OmegaFold containers
+    :param colabfold_max_parallel: Number of parallel instances for ColabFold containers
+    :raise Da4vidConfigurationError: If images are not available, or models folder are invalid
+    """
+    self.client = client
+    self.gpu_manager = gpu_manager
+    self.rfdiffusion_models_dir = rfdiffusion_models_dir
+    self.omegafold_models_dir = omegafold_models_dir
+    self.colabfold_models_dir = colabfold_models_dir
+    self.rfdiffusion_image = rfdiffusion_image
+    self.protein_mpnn_image = protein_mpnn_image
+    self.omegafold_image = omegafold_image
+    self.colabfold_image = colabfold_image
+    self.masif_image = masif_image
+    self.omegafold_max_parallel = omegafold_max_parallel
+    self.colabfold_max_parallel = colabfold_max_parallel
+    self.__check_parameters()
 
-    def output_folder(self) -> str:
-      return os.path.join(self.run.root_folder, 'rfdiffusion', 'outputs')
+  def __check_parameters(self):
+    errors = []
+    # Checking images
+    for image in [self.rfdiffusion_image, self.protein_mpnn_image, self.omegafold_image,
+                  self.colabfold_image, self.masif_image]:
+      if not self.client.images.list(filters={'reference': image}):
+        errors.append(f'Image not found: {image}')
+    # Checking directories
+    if self.rfdiffusion_models_dir is None or not os.path.isdir(self.rfdiffusion_models_dir):
+      errors.append(f'Invalid RFdiffusion model dir: {self.rfdiffusion_models_dir}')
+    if self.omegafold_models_dir is None or not os.path.isdir(self.omegafold_models_dir):
+      errors.append(f'Invalid OmegaFold model dir: {self.omegafold_models_dir}')
+    if self.colabfold_models_dir is None or not os.path.isdir(self.colabfold_models_dir):
+      errors.append(f'Invalid Colabfold models dir: {self.colabfold_models_dir}')
+    # Checking parallel containers numbers are positive
+    if self.omegafold_max_parallel < 1:
+      errors.append(f'Invalid number of OmegaFold parallel containers: {self.omegafold_max_parallel}')
+    if self.colabfold_max_parallel < 1:
+      errors.append(f'Invalid number of ColabFold parallel containers: {self.colabfold_max_parallel}')
+    if errors:
+      raise self.Da4vidConfigurationError(errors)
+
+  class Da4vidConfigurationError(Exception):
+    def __init__(self, errors: List[str]):
+      super().__init__()
+      self.errors = errors
 
     def __str__(self):
-      return (f'rfdiffusion:\n - model_dir: {self.model_dir}\n - num_designs: {self.num_designs}\n'
-              f' - partial_T: {self.partial_T}\n - contacts_threshold: {self.contacts_threshold}\n'
-              f' - rog_potential: {self.rog_potential}\n')
-
-  def add_rfdiffusion_configuration(self, model_dir: str, num_designs: int, partial_T: int, contacts_threshold: float,
-                                    rog_potential: float):
-    self.rfdiffusion_config = RunConfig.__RFdiffusionConfig(run=self, model_dir=model_dir, num_designs=num_designs,
-                                                            partial_T=partial_T, contacts_threshold=contacts_threshold,
-                                                            rog_potential=rog_potential)
-
-  class __BackboneFilteringConfig:
-    def __init__(self, run, ss_threshold: float, rog_cutoff: float, rog_percentage: bool):
-      self.run = run
-      self.ss_threshold = ss_threshold
-      self.rog_cutoff = rog_cutoff
-      self.rog_percentage = rog_percentage
-
-    def output_folder(self) -> str:
-      return os.path.join(self.run.root_folder, 'filtered_backbones')
-
-    def __str__(self):
-      return (f'backbone_filtering:\n - ss_threshold: {self.ss_threshold}\n - rog_cutoff: {self.rog_cutoff}\n'
-              f' - rog_percentage: {self.rog_percentage}\n')
-
-  def add_backbone_filtering_configuration(self, ss_threshold: int, rog_cutoff: float, rog_percentage: bool = False):
-    self.backbone_filtering_config = RunConfig.__BackboneFilteringConfig(
-      run=self,
-      ss_threshold=ss_threshold,
-      rog_cutoff=rog_cutoff,
-      rog_percentage=rog_percentage
-    )
-
-  class __ProteinMPNNConfig:
-    def __init__(self, run, seqs_per_target: int, sampling_temp: float, backbone_noise: float):
-      self.run = run
-      self.seqs_per_target = seqs_per_target
-      self.sampling_temp = sampling_temp
-      self.backbone_noise = backbone_noise
-
-    def output_folder(self) -> str:
-      return os.path.join(self.run.root_folder, 'protein_mpnn', 'outputs')
-
-    def complete_output_folder(self) -> str:
-      """
-      Gets the full path to output FASTAs.
-      :return: The path to the folder where FASTAs are
-      """
-      return os.path.join(self.output_folder(), 'seqs')
-
-    def __str__(self):
-      return (f'protein_mpnn:\n - seqs_per_target: {self.seqs_per_target}\n - sampling_temp: {self.sampling_temp}\n'
-              f' - backbone_noise: {self.backbone_noise}\n')
-
-  def add_proteinmpnn_configuration(self, seqs_per_target: int, sampling_temp: float, backbone_noise: float):
-    self.proteinmpnn_config = RunConfig.__ProteinMPNNConfig(
-      run=self,
-      seqs_per_target=seqs_per_target,
-      sampling_temp=sampling_temp,
-      backbone_noise=backbone_noise
-    )
-
-  class __OmegaFoldConfig:
-    def __init__(self, run, model_dir: str, num_recycles: int, model_weights: str):
-      self.run = run
-      self.model_dir = model_dir
-      self.num_recycles = num_recycles
-      self.model_weights = model_weights
-
-    def output_folder(self) -> str:
-      return os.path.join(self.run.root_folder, 'omegafold', 'outputs')
-
-    def __str__(self):
-      return (f'omegafold:\n - model_dir: {self.model_dir}\n - num_recycles: {self.num_recycles}\n'
-              f' - model_weights: {self.model_weights}\n')
-
-  def add_omegafold_configuration(self, model_dir: str,
-                                  num_recycles: int, model_weights: str):
-    self.omegafold_config = RunConfig.__OmegaFoldConfig(
-      run=self,
-      model_dir=model_dir,
-      num_recycles=num_recycles,
-      model_weights=model_weights
-    )
-
-  class __SequenceFilteringConfig:
-    def __init__(self, plddt_threshold: float, average_cutoff: int, rog_cutoff: float, max_samples: int):
-      self.plddt_threshold = plddt_threshold
-      self.average_cutoff = average_cutoff
-      self.rog_cutoff = rog_cutoff
-      self.max_samples = max_samples
-
-    def __str__(self):
-      return (f'sequence_filtering:\n - plddt_threshold: {self.plddt_threshold}\n'
-              f' - rog_threshold: {self.rog_cutoff}\n')
-
-  def add_omegafold_filtering_configuration(self, plddt_threshold: float, average_cutoff: int,
-                                            max_samples: int = None, rog_cutoff: float = None):
-    self.sequence_filtering_config = RunConfig.__SequenceFilteringConfig(
-      plddt_threshold=plddt_threshold,
-      average_cutoff=average_cutoff,
-      rog_cutoff=rog_cutoff,
-      max_samples=max_samples
-    )
-
-  class __ColabFoldConfig:
-    def __init__(self, model_dir: str, num_recycle: int, model_name: str, num_models: int):
-      self.model_dir = model_dir
-      self.num_recycle = num_recycle
-      self.model_name = model_name
-      self.num_models = num_models
-
-    def __str__(self):
-      return (f'colabfold:\n - model_dir: {self.model_dir}\n - num_recycle: {self.num_recycle}\n'
-              f' - model_name: {self.model_name}\n - num_models: {self.num_models}\n')
-
-  def add_colabfold_configuration(self, model_dir: str, num_recycle: int, model_name: str, num_models: int):
-    self.colabfold_config = self.__ColabFoldConfig(
-      model_dir=model_dir,
-      num_recycle=num_recycle,
-      model_name=model_name,
-      num_models=num_models
-    )
-
-  def add_colabfold_filtering(self, plddt_threshold: float, average_cutoff: int,
-                              max_samples: int = None, rog_cutoff: float = None):
-    self.colabfold_filtering_config = RunConfig.__SequenceFilteringConfig(
-      plddt_threshold=plddt_threshold,
-      average_cutoff=average_cutoff,
-      rog_cutoff=rog_cutoff,
-      max_samples=max_samples
-    )
-
-  def get_rfdiffusion_configuration(self) -> __RFdiffusionConfig:
-    return self.rfdiffusion_config
-
-  def get_backbone_filtering_configuration(self) -> __BackboneFilteringConfig:
-    return self.backbone_filtering_config
-
-  def get_proteinmpnn_configuration(self) -> __ProteinMPNNConfig:
-    return self.proteinmpnn_config
-
-  def get_omegafold_configuration(self) -> __OmegaFoldConfig:
-    return self.omegafold_config
-
-  def get_sequence_filtering_configuration(self) -> __SequenceFilteringConfig:
-    return self.sequence_filtering_config
-
-  def get_colabfold_configuration(self) -> __ColabFoldConfig:
-    return self.colabfold_config
-
-  def get_colabfold_filtering_configuration(self) -> __SequenceFilteringConfig:
-    return self.colabfold_filtering_config
-
-  def output_folder(self) -> str:
-    return os.path.join(self.root_folder, 'outputs')
-
-  def __init__(self, name: str | int, root_folder: str, percentage: bool = False):
-    """
-    Initializes the run configuration, specifying its name.
-    :param name: The full name identifier of the run, if it is a string, or the
-                 index of the run
-    """
-    self.name = name if isinstance(name, str) else f'run{name}'
-    self.root_folder = root_folder
-    self.percentage = percentage
-    self.rfdiffusion_config: RunConfig.__RFdiffusionConfig | None = None
-    self.backbone_filtering_config: RunConfig.__BackboneFilteringConfig | None = None
-    self.proteinmpnn_config: RunConfig.__ProteinMPNNConfig | None = None
-    self.omegafold_config: RunConfig.__OmegaFoldConfig | None = None
-    self.sequence_filtering_config: RunConfig.__SequenceFilteringConfig | None = None
-    self.colabfold_config: RunConfig.__ColabFoldConfig | None = None
-    self.colabfold_filtering_config: RunConfig.__SequenceFilteringConfig | None = None
-
-  def __str__(self):
-    return (f'run: {self.name}:\n - root_folder: {self.root_folder}\n'
-            f'{self.rfdiffusion_config if self.rfdiffusion_config else ""}'
-            f'{self.backbone_filtering_config if self.backbone_filtering_config else ""}'
-            f'{self.proteinmpnn_config}'
-            f'{self.omegafold_config}'
-            f'{self.sequence_filtering_config}')
-
-
-class PipelineConfig:
-  def __init__(self):
-    self.runs = []
-
-  def get_run(self, iteration: int) -> RunConfig:
-    """
-    runs are 1-indexed
-    :param iteration:
-    :return:
-    """
-    return self.runs[iteration - 1]
-
-  def add_run_configuration(self, config: RunConfig, idx: int = None):
-    if idx is None:
-      self.runs.append(config)
-    else:
-      self.runs.insert(idx, config)
-
-  def __str__(self):
-    s = ''
-    for r in self.runs:
-      s += str(r)
-    return s
+      return '; '.join(self.errors)
 
   @staticmethod
-  def load_from_yaml(cfg_file: str):
-    with open(cfg_file) as f:
+  def get(env_file: str = None):
+    """
+    Gets the pipeline static configuration. If it has not been already
+    inited, it will be created from the <em>.env</em> file.
+    :param env_file: If given, the configuration will be loaded from
+                        the specified dotenv file
+    :return: The static configuration of the pipeline.
+    """
+    if not StaticConfig.instance:
+      dotenv.load_dotenv(env_file)
+      StaticConfig.instance = StaticConfig(
+        client=docker.from_env(),
+        gpu_manager=CudaDeviceManager(),
+        rfdiffusion_image=os.environ.get('RFDIFFUSION_IMAGE', RFdiffusionContainer.DEFAULT_IMAGE),
+        rfdiffusion_models_dir=os.environ.get('RFDIFFUSION_MODEL_FOLDER', None),
+        protein_mpnn_image=os.environ.get('PROTEIN_MPNN_FOLDER', ProteinMPNNContainer.DEFAULT_IMAGE),
+        omegafold_image=os.environ.get('OMEGAFOLD_IMAGE', OmegaFoldContainer.DEFAULT_IMAGE),
+        omegafold_models_dir=os.environ.get('OMEGAFOLD_MODEL_FOLDER', None),
+        colabfold_image=os.environ.get('COLABFOLD_IMAGE', ColabFoldContainer.DEFAULT_IMAGE),
+        colabfold_models_dir=os.environ.get('COLABFOLD_MODEL_FOLDER', None),
+        masif_image=os.environ.get('MASIF_IMAGE', MasifContainer.DEFAULT_IMAGE),
+        omegafold_max_parallel=int(os.environ.get('OMEGAFOLD_MAX_PARALLEL', 1)),
+        colabfold_max_parallel=int(os.environ.get('COLABFOLD_MAX_PARALLEL', 1))
+      )
+    return StaticConfig.instance
+
+  def __str__(self):
+    return (f'StaticConfig:'
+            f' - RFdiffusion image: {self.rfdiffusion_image}\n'
+            f' - RFdiffusion models: {self.rfdiffusion_models_dir}\n'
+            f' - ProteinMPNN image: {self.protein_mpnn_image}\n'
+            f' - OmegaFold image: {self.omegafold_image}\n'
+            f' - OmegaFold models: {self.omegafold_models_dir}\n'
+            f' - ColabFold image: {self.colabfold_image}\n'
+            f' - ColabFold models: {self.colabfold_models_dir}\n'
+            f' - MaSIF image: {self.masif_image}\n')
+
+
+class PipelineCreator:
+
+  def __init__(self, static_config_env_file: str = None):
+    self.static_config = StaticConfig.get(static_config_env_file)
+
+  class PipelineCreationError(Exception):
+    def __init__(self, message: str):
+      super().__init__(message)
+
+  def from_yml(self, yml_config: str) -> PipelineRootStep:
+    """
+    Creates the pipeline from the pipeline configuration file in YAML format.
+    :param yml_config: The path to the configuration file
+    :return: A single step or a composite step including all steps defined in the pipeline
+    """
+    with open(yml_config) as f:
       data = yaml.safe_load(f)
-      config = PipelineConfig()
-      for el in data:
-        run_name = list(el.keys())[0]
-        run_el = el[run_name]
-        run = RunConfig(run_name, run_el.get('root', None), run_el.get('percentage', None))
-        if 'rfdiffusion' in run_el.keys():
-          run.add_rfdiffusion_configuration(**run_el['rfdiffusion'])
-        if 'backbone_filtering' in run_el.keys():
-          run.add_backbone_filtering_configuration(**run_el['backbone_filtering'])
-        if 'proteinmpnn' in run_el.keys():
-          run.add_proteinmpnn_configuration(**run_el['proteinmpnn'])
-        if 'omegafold' in run_el.keys():
-          run.add_omegafold_configuration(**run_el['omegafold'])
-        if 'omegafold_filtering' in run_el.keys():
-          run.add_omegafold_filtering_configuration(**run_el['omegafold_filtering'])
-        if 'colabfold' in run_el.keys():
-          run.add_colabfold_configuration(**run_el['colabfold'])
-        if 'colabfold_filtering' in run_el.keys():
-          run.add_colabfold_filtering(**run_el['colabfold_filtering'])
-        config.add_run_configuration(run)
-      return config
+      return self.__process_root_element(data)
+
+  def __process_root_element(self, el: Dict[str, Any]) -> PipelineRootStep:
+    el_name = list(el.keys())[0]
+    root_el = el[el_name]
+    # Checks
+    if 'folder' not in root_el.keys():
+      raise self.PipelineCreationError('Root folder not specified')
+    if 'antigen' not in root_el.keys():
+      raise self.PipelineCreationError('Antigen path is not specified')
+    if 'epitope' not in root_el.keys():
+      raise self.PipelineCreationError('Epitope has not been specified')
+    antigen = read_from_pdb(os.path.abspath(root_el['antigen']))
+    epitope = self.__create_epitope(antigen, root_el['epitope'])
+    root_step = PipelineRootStep(
+      name=el_name,
+      antigen=Sample(name=antigen.name, filepath=antigen.filename, protein=antigen),
+      epitope=epitope,
+      folder=os.path.abspath(root_el['folder'])
+    )
+    root_step.add_step([self.__process_element(root_step, root_step, step_el)
+                        for step_el in root_el['steps']])
+    self.__check_different_context_folder(root_step)
+    return root_step
+
+  @staticmethod
+  def __create_epitope(antigen: Protein, epitope_str: str) -> Epitope:
+    # TODO: refactor epitope to accept not contiguous epitopes
+    chain = epitope_str[0]
+    start, end = epitope_str[1:].split('-')
+    return Epitope(chain, int(start), int(end), antigen)
+
+  def __process_element(self, root: PipelineRootStep, parent: CompositeStep,
+                        el: Dict[str, Any]) -> PipelineStep:
+    el_name = list(el.keys())[0]
+    el = el[el_name]
+    match el_name:
+      case 'rfdiffusion':
+        return RFdiffusionStep(
+          name=el.get('name', 'rfdiffusion'),
+          parent=parent,
+          epitope=root.epitope,
+          model_dir=self.static_config.rfdiffusion_models_dir,
+          client=self.static_config.client,
+          image=self.static_config.rfdiffusion_image,
+          gpu_manager=self.static_config.gpu_manager,
+          config=RFdiffusionStep.RFdiffusionConfig(**{k: v for k, v in el.items() if k != 'name'})
+        )
+      case 'backbone_filtering':
+        return BackboneFilteringStep(
+          name=el.get('name', 'backbone_filtering'),
+          parent=parent,
+          **{k: v for k, v in el.items() if k != 'name'}
+        )
+      case 'proteinmpnn':
+        return ProteinMPNNStep(
+          name=el.get('name', 'proteinmpnn'),
+          parent=parent,
+          epitope=root.epitope,
+          client=self.static_config.client,
+          image=self.static_config.protein_mpnn_image,
+          gpu_manager=self.static_config.gpu_manager,
+          config=ProteinMPNNStep.ProteinMPNNConfig(**{k: v for k, v in el.items() if k != 'name'})
+        )
+        pass
+      case 'omegafold':
+        return OmegaFoldStep(
+          name=el.get('name', 'omegafold'),
+          parent=parent,
+          client=self.static_config.client,
+          image=self.static_config.omegafold_image,
+          model_dir=self.static_config.omegafold_models_dir,
+          gpu_manager=self.static_config.gpu_manager,
+          max_parallel=self.static_config.omegafold_max_parallel,
+          config=OmegaFoldStep.OmegaFoldConfig(**{k: v for k, v in el.items() if k != 'name'})
+        )
+      case 'sequence_filtering':
+        return SequenceFilteringStep(
+          name=el.get('name', 'sequence_filtering'),
+          parent=parent,
+          gpu_manager=self.static_config.gpu_manager,
+          **{k: v for k, v in el.items() if k != 'name'}
+        )
+      case 'colabfold':
+        return ColabFoldStep(
+          name=el.get('name', 'colabfold'),
+          parent=parent,
+          client=self.static_config.client,
+          image=self.static_config.colabfold_image,
+          gpu_manager=self.static_config.gpu_manager,
+          model_dir=self.static_config.colabfold_models_dir,
+          max_parallel=self.static_config.colabfold_max_parallel,
+          config=ColabFoldStep.ColabFoldConfig(**{k: v for k, v in el.items() if k != 'name'})
+        )
+      case _:  # Any other case is hopefully a composite step
+        comp_step = CompositeStep(name=el_name, parent=parent, folder=el.get('folder', None))
+        comp_step.add_step([self.__process_element(root, comp_step, step_el) for step_el in el['steps']])
+        # Checking if all children have different context folder
+        self.__check_different_context_folder(comp_step)
+        return comp_step
+
+  @staticmethod
+  def __check_different_context_folder(comp_step: CompositeStep):
+    seen = set()
+    for step in comp_step.steps:
+      ctx_folder = step.get_context_folder()
+      if ctx_folder not in seen:
+        seen.add(ctx_folder)
+      else:
+        raise PipelineCreator.PipelineCreationError(f'Two steps have the same context folder: {ctx_folder}')

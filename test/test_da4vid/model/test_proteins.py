@@ -2,7 +2,7 @@ import unittest
 
 import torch
 
-from da4vid.model.proteins import Residue, Chain, Residues, Protein, Atom, Proteins, NestedDict, Chains
+from da4vid.model.proteins import Residue, Chain, Residues, Protein, Atom, Proteins, NestedDict, Chains, Epitope
 
 
 class NestedDictionaryTest(unittest.TestCase):
@@ -422,6 +422,40 @@ class ProteinsTest(unittest.TestCase):
     self.assertEqual(2, len(p.chains))
     self.assertEqual('KGSTANL', p.chains[0].sequence())
     self.assertEqual('LNATSGK', p.chains[1].sequence())
+
+
+class EpitopeTest(unittest.TestCase):
+  def test_create_valid_epitope_without_protein(self):
+    epi = Epitope('A', 10, 19)
+    self.assertEqual('A', epi.chain)
+    self.assertEqual(10, epi.start)
+    self.assertEqual(19, epi.end)
+
+  def test_create_epitope_fails_when_start_is_negative(self):
+    with self.assertRaises(ValueError):
+      Epitope('A', -3, 10)
+
+  def test_create_epitope_fails_when_start_greater_than_end(self):
+    with self.assertRaises(ValueError):
+      Epitope('A', 20, 19)
+
+  def test_create_valid_epitope_with_specified_protein(self):
+    protein = Proteins.from_sequence('DEM0', 'KGSTANLLNATSGK:AAYKLGGCINNN')
+    epi = Epitope('B', 3, 7, protein)
+    self.assertEqual('B', epi.chain)
+    self.assertEqual(3, epi.start)
+    self.assertEqual(7, epi.end)
+    self.assertEqual(protein, epi.protein)
+
+  def test_create_epitope_for_given_protein_should_rise_error_if_chain_is_missing(self):
+    protein = Proteins.from_sequence('DEM0', 'KGSTANLLNATSGK:AAYKLGGCINNN')
+    with self.assertRaises(ValueError):
+      Epitope('C', 3, 7, protein)
+
+  def test_create_epitope_for_given_protein_should_rise_error_if_invlid_residues(self):
+    protein = Proteins.from_sequence('DEM0', 'KGSTANLLNATSGK:AAYKLGGCINNN')
+    with self.assertRaises(ValueError):
+      Epitope('A', 40, 50, protein)
 
 
 if __name__ == '__main__':

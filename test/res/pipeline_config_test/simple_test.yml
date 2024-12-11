@@ -1,0 +1,19 @@
+simple pipeline:
+    folder: ../../../res/pipeline_config_test/run
+    antigen: ../../../res/pipeline_config_test/antigen.pdb
+    epitope: A21-30
+    steps:
+    -   rfdiffusion:
+            name: 'my_rfdiffusion'
+            num_designs: 2000
+            partial_T: 23
+            contacts_threshold: 5
+            rog_potential: 12
+    -   backbone_filtering:
+            ss_threshold: 5
+            rog_cutoff: 10
+    -   proteinmpnn:
+            seqs_per_target: 2000
+            sampling_temp: .5
+            backbone_noise: .20
+            batch_size: 200

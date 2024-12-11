@@ -1,11 +1,14 @@
 import os.path
 import shutil
 import unittest
+import warnings
 
 import docker
 import dotenv
 
+from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_from_pdb
+from da4vid.model.proteins import Epitope
 from da4vid.model.samples import SampleSet, Sample
 from da4vid.pipeline.generation import RFdiffusionStep
 from test.cfg import RESOURCES_ROOT, DOTENV_FILE
@@ -13,9 +16,11 @@ from test.cfg import RESOURCES_ROOT, DOTENV_FILE
 
 class RFdiffusionStepTest(unittest.TestCase):
   def setUp(self):
+    warnings.simplefilter('ignore', ResourceWarning)
     self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['RFDIFFUSION_MODEL_FOLDER']
     self.output_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'rfdiffusion_test', 'outputs')
     self.client = docker.from_env()
+    self.gpu_manager = CudaDeviceManager()
 
   def tearDown(self):
     shutil.rmtree(self.output_folder)
@@ -29,15 +34,19 @@ class RFdiffusionStepTest(unittest.TestCase):
       filepath=pdb_demo,
       protein=read_from_pdb(pdb_demo)
     ))
-    step = RFdiffusionStep(
-      model_dir=self.model_weights,
+    config = RFdiffusionStep.RFdiffusionConfig(
       output_dir=self.output_folder,
-      epitope=(21, 30),
+      epitope=Epitope('A', 21, 30),
       num_designs=3,
       contacts_threshold=4,
       rog_potential=11,
-      partial_T=5,
-      client=self.client
+      partial_T=5
+    )
+    step = RFdiffusionStep(
+      model_dir=self.model_weights,
+      client=self.client,
+      gpu_manager=self.gpu_manager,
+      config=config
     )
     sample_set = step.execute(orig_set)
     self.assertEqual(3, len(sample_set.samples()))

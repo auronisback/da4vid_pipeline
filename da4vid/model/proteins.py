@@ -430,3 +430,39 @@ class NestedDict:
       else:
         d1[key] = d2[key]
     return d1
+
+
+class Epitope:
+  """
+  Models an epitope in a protein.
+  """
+  def __init__(self, chain: str, start: int, end: int, protein: Protein = None):
+    """
+    Creates a new epitope, optionally specifying a protein it belongs.
+    :param chain: The chain identifier for the epitope
+    :param start: Epitope's starting residue in the specified chain
+    :param end: Epitope's ending residue (inclusive) in the specified chain
+    :param protein: The protein to which this epitope belongs to. If it is
+                    specified, an integrity check will be performed
+    :raise ValueError: If start is negative, or start greater than end or, if the protein was given,
+                       the specified residues in the chain are not present in the protein
+    """
+    self.chain = chain
+    self.start = start
+    self.end = end
+    self.protein = protein
+    self.__check_chain_and_residues()
+
+  def __check_chain_and_residues(self):
+    if self.start < 0 or self.start > self.end:
+      raise ValueError(f'Epitope start residue index is greater than ending residue: {self.start, self.end} ')
+    if self.protein is None:
+      return
+    if not self.protein.has_chain(self.chain):
+      raise ValueError(f'Chain {self.chain} has not been found in protein {self.protein.name}')
+    chain = self.protein.get_chain(self.chain)
+    if self.end >= len(chain.residues):
+      raise ValueError(f'Residues {self.start, self.end} not found in chain {self.chain}')
+
+  def __str__(self):
+    return f'{self.chain}{self.start}-{self.end}'
