@@ -40,6 +40,7 @@ class OmegaFoldStep(DockerStep):
     self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
     self.gpu_manager = gpu_manager
+    self.max_parallel = max_parallel
     self.config = config
     self.container = OmegaFoldContainer(
       model_dir=model_dir,
@@ -49,7 +50,7 @@ class OmegaFoldStep(DockerStep):
       model_weights=self.config.model_weights,
       client=self.client,
       gpu_manager=self.gpu_manager,
-      max_parallel=max_parallel
+      max_parallel=self.max_parallel
     )
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
