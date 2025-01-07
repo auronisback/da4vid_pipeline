@@ -6,6 +6,7 @@ import warnings
 import docker
 import dotenv
 
+from da4vid.docker.omegafold import OmegaFoldContainer
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io.sample_io import sample_set_from_fasta_folders
 from da4vid.pipeline.validation import OmegaFoldStep
@@ -16,8 +17,9 @@ class OmegaFoldStepTest(unittest.TestCase):
 
   def setUp(self):
     warnings.simplefilter('ignore', ResourceWarning)
+    self.resources = os.path.join(RESOURCES_ROOT, 'steps_test', 'omegafold_test')
     self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['OMEGAFOLD_MODEL_FOLDER']
-    self.output_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'omegafold_test', 'outputs')
+    self.output_folder = os.path.join(self.resources, 'outputs')
     self.client = docker.from_env()
     self.gpu_manager = CudaDeviceManager()
 
@@ -26,16 +28,16 @@ class OmegaFoldStepTest(unittest.TestCase):
     self.client.close()
 
   def test_omegafold_on_single_sample(self):
-    of_test_root = os.path.join(RESOURCES_ROOT, 'steps_test', 'omegafold_test')
-    input_folder = os.path.join(of_test_root, 'inputs')
-    sample_set = sample_set_from_fasta_folders(of_test_root, input_folder, from_pmpnn=False)
+    input_folder = os.path.join(self.resources, 'inputs')
+    sample_set = sample_set_from_fasta_folders(self.resources, input_folder, from_pmpnn=False)
     config = OmegaFoldStep.OmegaFoldConfig(
-      output_dir=self.output_folder,
       num_recycles=1,
       model_weights='2',
     )
     sample_set = OmegaFoldStep(
-      input_dir=input_folder,
+      name='OF_STEP',
+      folder=self.resources,
+      image=OmegaFoldContainer.DEFAULT_IMAGE,
       model_dir=self.model_weights,
       config=config,
       client=self.client,

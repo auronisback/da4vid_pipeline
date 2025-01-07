@@ -18,6 +18,9 @@ from da4vid.pipeline.steps import PipelineStep, DockerStep
 
 
 class OmegaFoldStep(DockerStep):
+  """
+  Class implementing an OmegaFold prediction step in the pipeline.
+  """
   class OmegaFoldConfig:
     def __init__(self, num_recycles: int = 5, model_weights: str = '2'):
       """
@@ -50,7 +53,9 @@ class OmegaFoldStep(DockerStep):
       model_weights=self.config.model_weights,
       client=self.client,
       gpu_manager=self.gpu_manager,
-      max_parallel=self.max_parallel
+      max_parallel=self.max_parallel,
+      out_logfile=self.out_logfile,
+      err_logfile=self.err_logfile
     )
 
   def execute(self, sample_set: SampleSet) -> SampleSet:

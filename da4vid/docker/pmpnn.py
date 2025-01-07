@@ -2,7 +2,7 @@ from typing import List
 
 import docker
 
-from da4vid.docker.base import BaseContainer
+from da4vid.docker.base import BaseContainer, ContainerLogs
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.model.proteins import Protein
 
@@ -30,7 +30,8 @@ class ProteinMPNNContainer(BaseContainer):
 
   def __init__(self, input_dir: str, output_dir: str, client: docker.DockerClient, gpu_manager: CudaDeviceManager,
                seqs_per_target: int, batch_size: int = 32, sampling_temp: float = .1, backbone_noise: float = .0,
-               backbones: List[Protein] | None = None, image: str = DEFAULT_IMAGE):
+               backbones: List[Protein] | None = None, image: str = DEFAULT_IMAGE,
+               out_logfile: str = None, err_logfile: str = None):
     super().__init__(
       image=image,
       entrypoint='/bin/bash',
@@ -49,6 +50,8 @@ class ProteinMPNNContainer(BaseContainer):
     self.backbone_noise = backbone_noise
     self.backbones = backbones  # TODO: make PMPNN uses only given backbones
     self.batch_size = batch_size
+    self.out_logfile = out_logfile
+    self.err_logfile = err_logfile
     # Default chains and positions
     self.__fixed_chains = {}
 
@@ -57,7 +60,8 @@ class ProteinMPNNContainer(BaseContainer):
 
   def run(self):
     self.commands = self.__create_commands()
-    return super()._run_container()
+    with ContainerLogs(self.out_logfile, self.err_logfile) as logs:
+      return super()._run_container(output_log=logs.out_logfile, error_log=logs.err_logfile)
 
   def __create_commands(self) -> List[str]:
     parsed_chains_jsonl = f'{ProteinMPNNContainer.__JSONL_DIR}/parsed_chains.jsonl'

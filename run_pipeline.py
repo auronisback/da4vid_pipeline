@@ -19,6 +19,7 @@ def main():
     exit(2)
   pipeline = PipelineCreator().from_yml(cfg_file)
   PipelinePrinter().print(pipeline)
+  pipeline.execute()
 
 
 if __name__ == '__main__':

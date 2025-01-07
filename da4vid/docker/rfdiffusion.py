@@ -1,12 +1,13 @@
 import os
 import shutil
+import sys
 from typing import Tuple
 
 import docker
 from docker.client import DockerClient
 from typing_extensions import Self
 
-from da4vid.docker.base import BaseContainer
+from da4vid.docker.base import BaseContainer, ContainerLogs
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.model.proteins import Protein, Chain, Epitope
 
@@ -231,7 +232,8 @@ class RFdiffusionContainer(BaseContainer):
   def __init__(self, model_dir: str, output_dir: str, input_pdb: str, client: docker.DockerClient,
                gpu_manager: CudaDeviceManager, contig_map: RFdiffusionContigMap, input_dir: str = None,
                num_designs: int = 3, diffuser_T: int = 50, partial_T: int = 20,
-               potentials: RFdiffusionPotentials = None, image: str = DEFAULT_IMAGE):
+               potentials: RFdiffusionPotentials = None, image: str = DEFAULT_IMAGE,
+               out_logfile: str = None, err_logfile: str = None):
     """
     Creates a new instance of this container, without starting it.
     :param model_dir: Directory where RFdiffusion model weights are stored
@@ -246,6 +248,8 @@ class RFdiffusionContainer(BaseContainer):
     :param partial_T: Timesteps used if partial diffusion is specified in contig map
     :param potentials: The potential object used to bias diffusion
     :param image: The image used to run the container. Defaults to 'da4vid/rfdiffusion:latest'
+    :param out_logfile: The path to which container STDOUT will be written. If None, host STDOUT is used
+    :param err_logfile: The path to which container STDERR will be written. If None, host STDERR is used
     """
     super().__init__(
       image=image,
@@ -267,6 +271,8 @@ class RFdiffusionContainer(BaseContainer):
     self.diffuser_T = diffuser_T
     self.partial_T = partial_T
     self.potentials = potentials
+    self.out_logfile = out_logfile
+    self.err_logfile = err_logfile
 
   def run(self) -> bool:
     if self.input_dir is None:
@@ -277,7 +283,8 @@ class RFdiffusionContainer(BaseContainer):
     self.commands = [self.__create_command()]
     # Modifying permissions of created files
     self.commands.append(f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}')
-    return super()._run_container()
+    with ContainerLogs(self.out_logfile, self.err_logfile) as logs:
+      return super()._run_container(logs.out_logfile, logs.err_logfile)
 
   def __create_command(self) -> str:
     cmd = f'python {RFdiffusionContainer.SCRIPT_LOCATION}'

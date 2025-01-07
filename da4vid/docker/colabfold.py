@@ -23,10 +23,10 @@ class ColabFoldContainer(BaseContainer):
                  'alphafold2_multimer_v3', 'deepfold_v1']
 
   def __init__(self, model_dir: str, input_dir: str, output_dir: str, client: docker.DockerClient,
-               num_recycle: int = 5, zip_outputs: bool = False,
+               gpu_manager: CudaDeviceManager, num_recycle: int = 5, zip_outputs: bool = False,
                model_name: str = MODEL_NAMES[0], num_models: int = 5,
                msa_host_url: str = COLABFOLD_API_URL, max_parallel: int = 1,
-               image: str = DEFAULT_IMAGE, gpu_manager: CudaDeviceManager = CudaDeviceManager()):
+               image: str = DEFAULT_IMAGE, out_logfile: str = None, err_logfile: str = None):
     super().__init__(
       image=image,
       entrypoint='/bin/bash',

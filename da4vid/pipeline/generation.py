@@ -17,6 +17,9 @@ from da4vid.pipeline.steps import PipelineStep, DockerStep
 
 
 class RFdiffusionStep(DockerStep):
+  """
+  Abstracts a step of RFdiffusion in the pipeline.
+  """
   class RFdiffusionConfig:
     """
     Class encapsulating the configuration for RFdiffusion.
@@ -51,6 +54,7 @@ class RFdiffusionStep(DockerStep):
     :param model_dir: The directory in which RFdiffusion weights are stored
     :param client: The docker client used to run RFdiffusion container
     :param gpu_manager: The CUDA device manager used to assign GPUs
+    :param kwargs: Other parameters used to create the step, such as name and folder
     """
     super().__init__(**kwargs)
     self.epitope = epitope
@@ -68,7 +72,7 @@ class RFdiffusionStep(DockerStep):
     sample = sample_set.samples()[0]  # TODO: Only the 1st sample is used
     self.__check_params(sample.protein)
     # Creating output folder if it not exists
-    os.makedirs(self.get_context_folder(), exist_ok=True)
+    os.makedirs(self.output_dir, exist_ok=True)
     # Running the container
     print('Starting RFdiffusion container with parameters:')
     print(f' - protein PDB file: {sample.filepath}')
@@ -88,6 +92,11 @@ class RFdiffusionStep(DockerStep):
       raise FileNotFoundError(f'input pdb not found: {protein.filename}')
 
   def __create_container(self, sample: Sample) -> RFdiffusionContainer:
+    """
+    Creates the RFdiffusion container given the sample backbone.
+    :param sample: The sample used in the step
+    :return: The initialized RFdiffusion container
+    """
     potentials = None
     if self.config.contacts_threshold is not None or self.config.rog_potential is not None:
       potentials = RFdiffusionPotentials(guiding_scale=10).linear_decay()
@@ -100,12 +109,21 @@ class RFdiffusionStep(DockerStep):
       model_dir=self.model_dir, input_dir=input_dir, output_dir=self.output_dir,
       input_pdb=sample.filepath, num_designs=self.config.num_designs, partial_T=self.config.partial_T,
       contig_map=RFdiffusionContigMap.partial_diffusion_around_epitope(sample.protein, self.epitope),
-      potentials=potentials, client=self.client, gpu_manager=self.gpu_manger)
+      potentials=potentials, client=self.client, gpu_manager=self.gpu_manger,
+      out_logfile=self.out_logfile, err_logfile=self.err_logfile
+    )
 
-  def __create_folders(self):
+  def __create_folders(self) -> None:
+    """
+    Creates folders needed in the step.
+    """
     os.makedirs(self.output_dir, exist_ok=True)
 
   def __create_sample_set(self) -> SampleSet:
+    """
+    Creates a new sample set with the outputs.
+    :return: The sample set obtained after the RFdiffusion step
+    """
     new_set = SampleSet()
     new_set.add_samples([Sample(name=b.name, filepath=b.filename, protein=b) for b
                          in read_pdb_folder(self.output_dir)])
@@ -113,6 +131,9 @@ class RFdiffusionStep(DockerStep):
 
 
 class BackboneFilteringStep(PipelineStep):
+  """
+  Abstract the step of filtering backbones according to their structural data.
+  """
   def __init__(self, ss_threshold: int, rog_cutoff: float, rog_percentage: bool = False,
                gpu_manager: CudaDeviceManager = None, **kwargs):
     """
@@ -124,6 +145,7 @@ class BackboneFilteringStep(PipelineStep):
                            absolute or in percentage of structures in each cluster
     :param gpu_manager: The CUDA device manager used to assign GPUs. If none, CPU
                         will be used instead
+    :param kwargs: Other parameters used to create the step, such as name and folder
     """
     super().__init__(**kwargs)
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
@@ -166,7 +188,13 @@ class BackboneFilteringStep(PipelineStep):
 
 
 class ProteinMPNNStep(DockerStep):
+  """
+  Abstracts a step of sequence sampling with ProteinMPNN.
+  """
   class ProteinMPNNConfig:
+    """
+    Class storing configuration of a ProteinMPNN step.
+    """
     def __init__(self, seqs_per_target: int, sampling_temp: float = 0.2,
                  backbone_noise: float = 0, batch_size: int = 32):
       """
@@ -197,6 +225,13 @@ class ProteinMPNNStep(DockerStep):
               f' - batch_size: {self.batch_size}\n')
 
   def __init__(self, epitope: Epitope, gpu_manager: CudaDeviceManager, config: ProteinMPNNConfig, **kwargs):
+    """
+    Creates a ProteinMPNN step.
+    :param epitope: The epitope which should be held fixed
+    :param gpu_manager: The CUDA device manager for assigning GPU resources
+    :param config: The ProteinMPNN configuration
+    :param kwargs: Other arguments for creating the step, such as name and folder
+    """
     super().__init__(**kwargs)
     self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
@@ -219,6 +254,12 @@ class ProteinMPNNStep(DockerStep):
     )
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
+    """
+    Executes the ProteinMPNN step.
+    :param sample_set: The sample set on which create sequences
+    :return: A sample set with the generated sequences subdivided by their
+             original samples
+    """
     print('Running ProteinMPNN on filtered backbones with parameters:')
     print(f' - input backbones: {self.input_dir}')
     print(f' - output folder: {self.output_dir}')
@@ -247,6 +288,11 @@ class ProteinMPNNStep(DockerStep):
     return sample_set
 
   def __rename_sequences_and_extract_data(self, fasta_path: str) -> List[Protein]:
+    """
+    Renames FASTA sequences produced by this step and extracts their Sequence objects.
+    :param fasta_path: The path on which extract FASTA sequences
+    :return: The list of generated proteins
+    """
     proteins = read_protein_mpnn_fasta(fasta_path)
     if not proteins:
       return proteins

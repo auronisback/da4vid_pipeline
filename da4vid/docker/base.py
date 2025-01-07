@@ -9,6 +9,9 @@ from da4vid.gpus.cuda import CudaDeviceManager, CudaDevice
 
 
 class BaseContainer(abc.ABC):
+  """
+  Abstract class for Docker containers.
+  """
 
   def __init__(self, image: str, entrypoint: str,
                client: docker.DockerClient, gpu_manager: CudaDeviceManager,
@@ -68,7 +71,7 @@ class BaseContainer(abc.ABC):
     :param error_log: The file on which print error logs. Defaults to STDERR
     :return: True if the command has been successfully executed, or False otherwise
     """
-    print(f'Executing command {command}')
+    print(f'Executing command: {command}')
     # Creating the handle for the exec command
     exec_handle = self.client.api.exec_create(
       container=container.id,
@@ -100,3 +103,48 @@ class BaseContainer(abc.ABC):
   def __check_image(self) -> None:
     if not self.client.images.list(filters={'reference': self.image}):
       raise self.DockerImageNotFoundException(f'Image not found: {self.image}')
+
+
+class ContainerLogs:
+  """
+  Class allowing the usage of logs with the "with" keyword.
+  """
+  def __init__(self, out_logfile: str, err_logfile: str):
+    """
+    Initialize the container log object.
+    :param out_logfile: Path to the file used to log container STDOUT. If None, host
+                        stdout will be used
+    :param err_logfile: Path to the file used to log container STDERR. If None, host
+                        stdout will be used
+    """
+    self.__of = out_logfile
+    self.__ef = err_logfile
+    self.__out_logfile = None
+    self.__err_logfile = None
+
+  def open(self):
+    self.__out_logfile = open(self.__of, 'w') if self.__of else sys.stdout
+    self.__err_logfile = open(self.__ef, 'w') if self.__ef else sys.stderr
+
+  @property
+  def out_logfile(self) -> IO:
+    return self.__out_logfile
+
+  @property
+  def err_logfile(self) -> IO:
+    return self.__err_logfile
+
+  def close(self):
+    # Close the files if they were given
+    if self.__of:
+      self.__out_logfile.close()
+    if self.__ef:
+      self.__err_logfile.close()
+
+  def __enter__(self):
+    self.open()
+    return self
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    self.close()
+

@@ -149,9 +149,9 @@ class PipelineCreator:
     """
     with open(yml_config) as f:
       data = yaml.safe_load(f)
-      return self.__process_root_element(data)
+      return self.__process_root_element(data, os.path.dirname(yml_config))
 
-  def __process_root_element(self, el: Dict[str, Any]) -> PipelineRootStep:
+  def __process_root_element(self, el: Dict[str, Any], yml_path: str) -> PipelineRootStep:
     el_name = list(el.keys())[0]
     root_el = el[el_name]
     # Checks
@@ -161,13 +161,17 @@ class PipelineCreator:
       raise self.PipelineCreationError('Antigen path is not specified')
     if 'epitope' not in root_el.keys():
       raise self.PipelineCreationError('Epitope has not been specified')
-    antigen = read_from_pdb(os.path.abspath(root_el['antigen']))
+    folder = root_el['folder']
+    folder = folder if os.path.isabs(folder) else os.path.abspath(os.path.join(yml_path, folder))
+    ag_path = root_el['antigen']
+    ag_path = ag_path if os.path.isabs(ag_path) else os.path.abspath(os.path.join(yml_path, ag_path))
+    antigen = read_from_pdb(os.path.abspath(ag_path))
     epitope = self.__create_epitope(antigen, root_el['epitope'])
     root_step = PipelineRootStep(
       name=el_name,
       antigen=Sample(name=antigen.name, filepath=antigen.filename, protein=antigen),
       epitope=epitope,
-      folder=os.path.abspath(root_el['folder'])
+      folder=folder
     )
     root_step.add_step([self.__process_element(root_step, root_step, step_el)
                         for step_el in root_el['steps']])

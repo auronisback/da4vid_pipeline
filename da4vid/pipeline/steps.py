@@ -1,17 +1,20 @@
 import abc
 import os.path
+from typing import List
 
 import docker
 from pathvalidate import sanitize_filename
-from typing import List
 
 from da4vid.model.proteins import Epitope
 from da4vid.model.samples import SampleSet, Sample
 
 
 class PipelineStep(abc.ABC):
+  """
+  Abstracts a generic step in the pipeline.
+  """
 
-  def __init__(self, name: str, parent=None, folder: str | None = None):
+  def __init__(self, name: str, parent=None, folder: str | None = None, log_on_file: bool = True):
     """
     Creates an abstract step.
     :param name: The name of the step
@@ -23,6 +26,8 @@ class PipelineStep(abc.ABC):
     self.folder = folder
     self.__ctx_folder = self.folder if self.folder and os.path.isabs(self.folder) else None
     self.__identifier = None  # Caching the identifier
+    self.out_logfile = os.path.join(self.get_context_folder(), 'stdout.log') if log_on_file else None
+    self.err_logfile = os.path.join(self.get_context_folder(), 'stderr.log') if log_on_file else None
 
   @abc.abstractmethod
   def execute(self, sample_set: SampleSet) -> SampleSet:
@@ -39,7 +44,7 @@ class PipelineStep(abc.ABC):
     :return: The folder used for I/O operations of inner steps
     """
     if not self.__ctx_folder:
-      self.__ctx_folder = self._sanitize_filename(self.folder if self.folder else self.name)
+      self.__ctx_folder = self._sanitize_name(self.folder if self.folder else self.name)
       if self.parent:
         self.__ctx_folder = os.path.join(self.parent.get_context_folder(), self.__ctx_folder)
     return self.__ctx_folder
@@ -56,8 +61,13 @@ class PipelineStep(abc.ABC):
     return self.__identifier
 
   @staticmethod
-  def _sanitize_filename(filename: str) -> str:
-    return sanitize_filename(filename.replace(' ', '_'))
+  def _sanitize_name(name: str) -> str:
+    """
+    Sanitize a string in order to be used as file or folder name
+    :param name: The name which will be sanitized
+    :return: A sanitized version of name which can be used as pathname
+    """
+    return sanitize_filename(name.replace(' ', '_'))
 
 
 class CompositeStep(PipelineStep):
@@ -79,7 +89,7 @@ class CompositeStep(PipelineStep):
 
   def add_step(self, steps: PipelineStep | List[PipelineStep]) -> None:
     """
-    Adds one or more pipeline steps at the end of the alredy inserted
+    Adds one or more pipeline steps at the end of the already inserted
     steps.
     :param steps: The single step or a list of steps which will be added
     """
@@ -101,7 +111,19 @@ class CompositeStep(PipelineStep):
 
 
 class PipelineRootStep(CompositeStep):
+  """
+  Abstracts the root element of the pipeline.
+  """
   def __init__(self, name: str, antigen: Sample, epitope: Epitope, folder: str):
+    """
+    Defines the root step of the pipeline, a composite step which includes every
+    other step.
+    :param name: The name of the pipeline
+    :param antigen: The antigen sample used to start the pipeline
+    :param epitope: The epitope around which scaffold
+    :param folder: The context folder in which pipeline steps will be
+                   executed
+    """
     if folder is None:
       raise ValueError(f'Root pipeline folder needed')
     if os.path.isfile(folder):
@@ -110,9 +132,32 @@ class PipelineRootStep(CompositeStep):
     self.antigen = antigen
     self.epitope = epitope
 
+  def execute(self, sample_set: SampleSet = None) -> SampleSet:
+    """
+    Executes the pipeline. If sample set is not given, it will be automatically
+    inferred by the antigen and the epitope parameters.
+    :param sample_set: The sample set on which start the pipeline. If None, it
+                       will be obtained by the antigen and epitope attributes
+    :return: The sample set with produced de-novo antigens
+    """
+    if sample_set is None:
+      sample_set = SampleSet()
+      sample_set.add_samples(self.antigen)
+    return super().execute(sample_set)
+
 
 class DockerStep(PipelineStep, abc.ABC):
+  """
+  Abstracts a step in the pipeline which is executed as a Docker container.
+  """
   def __init__(self, client: docker.DockerClient, image: str, **kwargs):
+    """
+    Initializes parameters common to steps executing operations in Docker containers.
+    :param client: The client instance used to instantiate containers
+    :param image: The image used by the containers in the step
+    :param kwargs: Other common arguments to pipeline steps, such as
+                   name and folder
+    """
     super().__init__(**kwargs)
     self.client = client
     self.image = image
