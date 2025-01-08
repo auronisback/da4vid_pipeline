@@ -284,7 +284,7 @@ class RFdiffusionContainer(BaseContainer):
     # Modifying permissions of created files
     self.commands.append(f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}')
     with ContainerLogs(self.out_logfile, self.err_logfile) as logs:
-      return super()._run_container(logs.out_logfile, logs.err_logfile)
+      return super()._run_container(logs.out, logs.err)
 
   def __create_command(self) -> str:
     cmd = f'python {RFdiffusionContainer.SCRIPT_LOCATION}'

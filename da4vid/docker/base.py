@@ -29,6 +29,10 @@ class BaseContainer(abc.ABC):
     self.volumes = volumes
     self.auto_remove = True
 
+  @abc.abstractmethod
+  def run(self) -> bool:
+    pass
+
   def _create_container(self) -> Tuple[Any, CudaDevice]:
     self.__check_image()
     device = self.gpu_manager.next_device()
@@ -127,11 +131,11 @@ class ContainerLogs:
     self.__err_logfile = open(self.__ef, 'w') if self.__ef else sys.stderr
 
   @property
-  def out_logfile(self) -> IO:
+  def out(self) -> IO:
     return self.__out_logfile
 
   @property
-  def err_logfile(self) -> IO:
+  def err(self) -> IO:
     return self.__err_logfile
 
   def close(self):

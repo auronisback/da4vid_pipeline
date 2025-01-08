@@ -53,7 +53,7 @@ class ColabFoldContainer(BaseContainer):
     # Setting number of max parallel jobs
     self.max_parallel = max_parallel
 
-  def run(self):
+  def run(self) -> bool:
     res = True
     chunks = self.__get_fasta_chunks()
     with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel) as executor:

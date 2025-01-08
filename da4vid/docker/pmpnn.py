@@ -58,10 +58,10 @@ class ProteinMPNNContainer(BaseContainer):
   def add_fixed_chain(self, chain: str, positions: List[int] = None):
     self.__fixed_chains[chain] = positions
 
-  def run(self):
+  def run(self) -> bool:
     self.commands = self.__create_commands()
     with ContainerLogs(self.out_logfile, self.err_logfile) as logs:
-      return super()._run_container(output_log=logs.out_logfile, error_log=logs.err_logfile)
+      return super()._run_container(output_log=logs.out, error_log=logs.err)
 
   def __create_commands(self) -> List[str]:
     parsed_chains_jsonl = f'{ProteinMPNNContainer.__JSONL_DIR}/parsed_chains.jsonl'

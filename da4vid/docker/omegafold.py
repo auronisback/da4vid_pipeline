@@ -39,7 +39,7 @@ class OmegaFoldContainer(BaseContainer):
     self.out_logfile = out_logfile
     self.err_logfile = err_logfile
 
-  def run(self):
+  def run(self) -> bool:
     chunks = self.__get_fasta_chunks()
     res = True
     with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
@@ -59,7 +59,7 @@ class OmegaFoldContainer(BaseContainer):
       # After everything is finished, change permissions on generated files
       res &= super()._execute_command(container,
                                       f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}',
-                                      output_log=logs.out_logfile, error_log=logs.err_logfile)
+                                      output_log=logs.out, error_log=logs.err)
     super()._stop_container(container)
     return res
 
@@ -67,7 +67,7 @@ class OmegaFoldContainer(BaseContainer):
     res = True
     for fasta_basename in fasta_basenames:
       command = self.__create_command(fasta_basename)
-      res &= super()._execute_command(container, command, logs.out_logfile, logs.err_logfile)
+      res &= super()._execute_command(container, command, logs.out, logs.err)
       if not res:
         break
     return res

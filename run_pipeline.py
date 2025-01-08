@@ -1,5 +1,5 @@
 """
-Script used to check if all pipeline configuration is as intended.
+Script used to urn the pipeline.
 
 :author Francesco Altiero <francesco.altiero@unina.it>
 """

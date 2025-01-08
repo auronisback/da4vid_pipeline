@@ -8,7 +8,7 @@ import docker
 from da4vid import io
 from da4vid.docker.base import BaseContainer
 from da4vid.gpus.cuda import CudaDeviceManager
-from da4vid.model import Protein
+from da4vid.model.proteins import Protein
 
 
 class ChaiContainer(BaseContainer):

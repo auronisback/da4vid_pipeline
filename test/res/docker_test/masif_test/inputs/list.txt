@@ -1,0 +1,2 @@
+example1.pdb foo_A
+example2.pdb bar_A
