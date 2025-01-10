@@ -1,6 +1,6 @@
 test pipeline:
-    folder: ../../../res/pipeline_config_test/run
-    antigen: ../../../res/pipeline_config_test/antigen.pdb
+    folder: ../../res/pipeline_config_test/run
+    antigen: ../../res/pipeline_config_test/antigen.pdb
     epitope: A21-30
     steps:
     -   1st iteration:

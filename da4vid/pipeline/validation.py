@@ -104,6 +104,12 @@ class OmegaFoldStep(DockerStep):
       )
     return sample_set
 
+  def input_folder(self) -> str:
+    return self.input_dir
+
+  def output_folder(self) -> str:
+    return self.output_dir
+
 
 class SequenceFilteringStep(PipelineStep):
   def __init__(self, model: str, plddt_threshold: float, average_cutoff: float = None, rog_cutoff: float = None,
@@ -130,6 +136,7 @@ class SequenceFilteringStep(PipelineStep):
     self.rog_cutoff = rog_cutoff
     self.max_samples = max_samples
     self.device = gpu_manager.next_device().name if gpu_manager else 'cpu'
+    self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
     """
@@ -146,8 +153,9 @@ class SequenceFilteringStep(PipelineStep):
         filtered_folds = self.__filter_by_rog(filtered_folds)
       if filtered_folds:
         filtered_set.add_samples(filtered_folds)
-    print(f'Filtered {len(sample_set.samples())} backbones for '
+    print(f'Filtered {len(sample_set.samples())} folds for '
           f'a total of {len(filtered_set.samples())} samples')
+    self.__save_filtered_set(filtered_set)
     return filtered_set
 
   def __filter_by_plddt(self, folds: List[Fold]) -> List[Fold]:
@@ -170,6 +178,18 @@ class SequenceFilteringStep(PipelineStep):
     folds.sort(key=lambda f: f.metrics.get_metric('rog'))
     folds = folds[:self.rog_cutoff]
     return folds
+
+  def __save_filtered_set(self, filtered_set: SampleSet) -> None:
+    os.makedirs(self.output_dir, exist_ok=True)
+    for sample in filtered_set.samples():
+      shutil.copy2(sample.filepath, self.output_dir)
+
+  def input_folder(self) -> str:
+    # No input folder required
+    return ''
+
+  def output_folder(self) -> str:
+    return self.output_dir
 
 
 class ColabFoldStep(DockerStep):
@@ -256,3 +276,9 @@ class ColabFoldStep(DockerStep):
     #   for sequence in sample.sequences():
     #     seq_
     return SampleSet()
+
+  def input_folder(self) -> str:
+    return self.input_dir
+
+  def output_folder(self) -> str:
+    return self.output_dir

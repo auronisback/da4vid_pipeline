@@ -38,6 +38,22 @@ class PipelineStep(abc.ABC):
     """
     pass
 
+  @abc.abstractmethod
+  def output_folder(self) -> str:
+    """
+    Gets the output folder of the concrete step.
+    :return: The string with the absolute path to the output folder
+    """
+    pass
+
+  @abc.abstractmethod
+  def input_folder(self) -> str:
+    """
+    Gets the input folder of the concrete step.
+    :return: The string with the absolute path to the input folder
+    """
+    pass
+
   def get_context_folder(self):
     """
     Gets the folder in which inner steps will be executed.
@@ -108,6 +124,28 @@ class CompositeStep(PipelineStep):
     for step in self.steps:
       sample_set = step.execute(sample_set)
     return sample_set
+
+  def input_folder(self) -> str:
+    """
+    Gets the input folder of the composite step, which refers to the input
+    folder of the first sub-step in this composite step.
+    :return: The input folder of the 1st sub-step
+    :raise AttributeError: if no steps have been set in this object
+    """
+    if self.steps:
+      return self.steps[0].input_folder()
+    raise AttributeError('No steps set in this composite step')
+
+  def output_folder(self) -> str:
+    """
+    Gets the output folder of the composite step, which refers to the output
+    folder of the last sub-step in this composite step.
+    :return: The output folder of the last sub-step
+    :raise AttributeError: if no steps have been set in this object
+    """
+    if self.steps:
+      return self.steps[-1].output_folder()
+    raise AttributeError('No steps set in this composite step')
 
 
 class PipelineRootStep(CompositeStep):

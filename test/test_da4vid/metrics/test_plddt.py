@@ -18,7 +18,7 @@ class PlddtTest(unittest.TestCase):
 
   def test_plddt_on_multiple_proteins(self):
     in_folder = f'{RESOURCES_ROOT}/plddt_test/'
-    proteins = read_pdb_folder(in_folder, b_fact_prop='omegafold.plddt')
+    proteins = read_pdb_folder(in_folder, b_fact_prop='plddt')
     plddt = evaluate_plddt(proteins, 'omegafold.plddt')
     self.assertEqual(3, plddt.shape[0], msg='Invalid number of returned pLDDT values')
     ground_truth = torch.tensor([79.3916, 85.5686, 83.7320])

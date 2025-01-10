@@ -16,6 +16,7 @@ from da4vid.io import read_from_pdb
 from da4vid.model.proteins import Protein, Epitope
 from da4vid.model.samples import Sample
 from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep
+from da4vid.pipeline.interaction import MasifStep
 from da4vid.pipeline.steps import CompositeStep, PipelineStep, PipelineRootStep
 from da4vid.pipeline.validation import OmegaFoldStep, SequenceFilteringStep, ColabFoldStep
 
@@ -247,6 +248,14 @@ class PipelineCreator:
           max_parallel=self.static_config.colabfold_max_parallel,
           config=ColabFoldStep.ColabFoldConfig(**{k: v for k, v in el.items() if k != 'name'})
         )
+      case 'masif':
+        return MasifStep(
+          name=el.get('name', 'masif'),
+          parent=parent,
+          client=self.static_config.client,
+          image=self.static_config.masif_image,
+          gpu_manager=self.static_config.gpu_manager
+        )
       case _:  # Any other case is hopefully a composite step
         comp_step = CompositeStep(name=el_name, parent=parent, folder=el.get('folder', None))
         comp_step.add_step([self.__process_element(root, comp_step, step_el) for step_el in el['steps']])
@@ -308,6 +317,8 @@ class PipelinePrinter:
       self.__print_sequence_filtering_step(step, header, last)
     elif isinstance(step, ColabFoldStep):
       self.__print_colabfold_step(step, header, last)
+    elif isinstance(step, MasifStep):
+      self.__print_masif_step(step, header, last)
     else:
       print(header, file=self.file)
 
@@ -381,3 +392,7 @@ class PipelinePrinter:
           file=self.file)
     print(f'{header}{self.BLANK if last else self.PIPE}  +  Compress Outputs: '
           f'{"Yes" if cf_step.config.zip_outputs else "No"}', file=self.file)
+
+  def __print_masif_step(self, masif_step: MasifStep, header: str, last: bool) -> None:
+    print(f'{header + (self.ELBOW if last else self.TEE)}MaSIF: {masif_step.name}', file=self.file)
+

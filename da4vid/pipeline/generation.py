@@ -61,6 +61,7 @@ class RFdiffusionStep(DockerStep):
     self.model_dir = model_dir
     self.gpu_manger = gpu_manager
     self.config = config
+    self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
@@ -71,8 +72,8 @@ class RFdiffusionStep(DockerStep):
     """
     sample = sample_set.samples()[0]  # TODO: Only the 1st sample is used
     self.__check_params(sample.protein)
-    # Creating output folder if it not exists
-    os.makedirs(self.output_dir, exist_ok=True)
+    # Creating input and output folders if it not exist
+    self.__create_folders()
     # Running the container
     print('Starting RFdiffusion container with parameters:')
     print(f' - protein PDB file: {sample.filepath}')
@@ -104,9 +105,9 @@ class RFdiffusionStep(DockerStep):
         potentials.add_monomer_contacts(self.config.contacts_threshold)
       if self.config.rog_potential is not None:
         potentials.add_rog(self.config.rog_potential)
-    input_dir = os.path.dirname(sample.filepath)
+    shutil.copy2(sample.filepath, self.input_dir)
     return RFdiffusionContainer(
-      model_dir=self.model_dir, input_dir=input_dir, output_dir=self.output_dir,
+      model_dir=self.model_dir, input_dir=self.input_dir, output_dir=self.output_dir,
       input_pdb=sample.filepath, num_designs=self.config.num_designs, partial_T=self.config.partial_T,
       contig_map=RFdiffusionContigMap.partial_diffusion_around_epitope(sample.protein, self.epitope),
       potentials=potentials, client=self.client, gpu_manager=self.gpu_manger,
@@ -117,6 +118,7 @@ class RFdiffusionStep(DockerStep):
     """
     Creates folders needed in the step.
     """
+    os.makedirs(self.input_dir, exist_ok=True)
     os.makedirs(self.output_dir, exist_ok=True)
 
   def __create_sample_set(self) -> SampleSet:
@@ -128,6 +130,12 @@ class RFdiffusionStep(DockerStep):
     new_set.add_samples([Sample(name=b.name, filepath=b.filename, protein=b) for b
                          in read_pdb_folder(self.output_dir)])
     return new_set
+
+  def input_folder(self) -> str:
+    return self.input_dir
+
+  def output_folder(self) -> str:
+    return self.output_dir
 
 
 class BackboneFilteringStep(PipelineStep):
@@ -185,6 +193,13 @@ class BackboneFilteringStep(PipelineStep):
       shutil.copy2(sample.filepath, new_location)
       sample.filepath = sample.protein.filename = new_location  # Updating protein location
     return filtered_set
+
+  def input_folder(self) -> str:
+    # This step does not use an input directory
+    return ''
+
+  def output_folder(self) -> str:
+    return self.output_dir
 
 
 class ProteinMPNNStep(DockerStep):
@@ -267,8 +282,13 @@ class ProteinMPNNStep(DockerStep):
     print(f' - sampling temperature: {self.config.sampling_temp}')
     print(f' - backbone noise: {self.config.backbone_noise}')
     print(f' - batch size: {self.config.batch_size}')
-    # Creating output dir if not existing
+    # Creating output and input dir if not existing
+    os.makedirs(self.input_dir, exist_ok=True)
     os.makedirs(self.output_dir, exist_ok=True)
+    # Copying input backbones into input folder
+    for sample in sample_set.samples():
+      sample_basename = os.path.basename(sample.filepath)
+      shutil.copy2(sample.filepath, os.path.join(self.input_dir, sample_basename))
     # Running the client
     if not self.container.run():
       raise RuntimeError('ProteinMPNN step failed')
@@ -285,6 +305,8 @@ class ProteinMPNNStep(DockerStep):
         protein.add_prop('protein_mpnn', sequences[0].get_prop('protein_mpnn'))
       sample.add_sequences(
         [Sequence(name=s.name, filepath=fasta_filepath, protein=s, sample=sample) for s in sequences])
+    # Removing sequences directory after copy
+    shutil.rmtree(self.__sequences_output_dir())
     return sample_set
 
   def __rename_sequences_and_extract_data(self, fasta_path: str) -> List[Protein]:
@@ -304,6 +326,7 @@ class ProteinMPNNStep(DockerStep):
     for protein in proteins:
       protein.filename = output_fasta
     write_fasta(proteins, output_fasta, overwrite=True)
+    # Removing original sequences directory
     return proteins
 
   def __sequences_output_dir(self) -> str:
@@ -312,3 +335,9 @@ class ProteinMPNNStep(DockerStep):
     :return: The path to the folder where FASTAs are placed by the container
     """
     return os.path.join(self.output_dir, 'seqs')
+
+  def input_folder(self) -> str:
+    return self.input_dir
+
+  def output_folder(self) -> str:
+    return self.output_dir

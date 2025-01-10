@@ -7,6 +7,7 @@ import docker
 import dotenv
 
 from da4vid.gpus.cuda import CudaDeviceManager
+from da4vid.pipeline.config import StaticConfig
 from test.cfg import RESOURCES_ROOT, DOTENV_FILE
 
 
@@ -16,11 +17,12 @@ class ColabFoldStepTest(unittest.TestCase):
     warnings.simplefilter('ignore', ResourceWarning)
     self.client = docker.from_env()
     self.gpu_manager = CudaDeviceManager()
-    self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['COLABFOLD_MODEL_FOLDER']
-    self.output_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'colabfold_test', 'outputs')
+    self.image = StaticConfig.get(DOTENV_FILE).colabfold_image
+    self.model_weights = StaticConfig.get(DOTENV_FILE).colabfold_models_dir
+    self.folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'colabfold_test', 'step_folder')
 
   def tearDown(self):
-    shutil.rmtree(self.output_folder)
+    shutil.rmtree(self.folder, ignore_errors=True)
     self.client.close()
 
   def test_colabfold_predictions(self):

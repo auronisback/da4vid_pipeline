@@ -26,9 +26,9 @@ class MasifStep(DockerStep):
   def __init__(self, gpu_manager: CudaDeviceManager, **kwargs):
     super().__init__(**kwargs)
     self.gpu_manager = gpu_manager
-    self.input_folder = os.path.join(self.get_context_folder(), 'inputs')
-    self.output_folder = os.path.join(self.get_context_folder(), 'outputs')
-    self.container_out_folder = os.path.join(self.get_context_folder(), 'tmp_out')
+    self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
+    self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
+    self.container_out_dir = os.path.join(self.get_context_folder(), 'tmp_out')
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
     """
@@ -42,42 +42,48 @@ class MasifStep(DockerStep):
     return self.__evaluate_interactions(sample_set)
 
   def __create_input_folder(self, sample_set: SampleSet):
-    os.makedirs(self.input_folder, exist_ok=True)
-    with open(os.path.join(self.input_folder, 'list.txt'), 'w') as f:
+    os.makedirs(self.input_dir, exist_ok=True)
+    with open(os.path.join(self.input_dir, 'list.txt'), 'w') as f:
       for sample in sample_set.samples():
         basename = os.path.basename(sample.filepath)
         list_name = f'{sample.name}_A'
         f.write(f'{basename} {list_name}\n')
-        shutil.copy2(sample.filepath, os.path.join(self.input_folder, basename))
+        shutil.copy2(sample.filepath, os.path.join(self.input_dir, basename))
 
   def __execute_container(self):
-    os.makedirs(self.container_out_folder, exist_ok=True)
+    os.makedirs(self.container_out_dir, exist_ok=True)
     masif = MasifContainer(
       client=self.client,
       image=self.image,
       gpu_manager=self.gpu_manager,
-      input_folder=self.input_folder,
-      output_folder=self.container_out_folder
+      input_folder=self.input_dir,
+      output_folder=self.container_out_dir
     )
     masif.run()
 
   def __refactor_outputs(self):
-    os.makedirs(self.output_folder, exist_ok=True)
-    meshes_folder = os.path.join(self.container_out_folder, 'meshes')
+    os.makedirs(self.output_dir, exist_ok=True)
+    meshes_folder = os.path.join(self.container_out_dir, 'meshes')
     for mesh_folder in os.listdir(meshes_folder):
-      out_mesh_folder = os.path.join(self.output_folder, mesh_folder.replace('_A', ''))
+      out_mesh_folder = os.path.join(self.output_dir, mesh_folder.replace('_A', ''))
       shutil.move(os.path.join(meshes_folder, mesh_folder), out_mesh_folder)
-      pred_data_file = os.path.join(self.container_out_folder, 'pred_data', f'pred_{mesh_folder}.npy')
+      pred_data_file = os.path.join(self.container_out_dir, 'pred_data', f'pred_{mesh_folder}.npy')
       if not os.path.exists(pred_data_file):
         print(f'Unable to find predictions for {mesh_folder}', file=sys.stderr)
       shutil.move(pred_data_file, out_mesh_folder)
-    shutil.rmtree(self.container_out_folder)
+    shutil.rmtree(self.container_out_dir)
 
   def __evaluate_interactions(self, sample_set: SampleSet) -> SampleSet:
     for sample in sample_set.samples():
-      masif_folder = os.path.join(self.output_folder, sample.name)
+      masif_folder = os.path.join(self.output_dir, sample.name)
       PointCloud2ResiPredictions.evaluate_interactions_for_protein(sample.protein, masif_folder)
     return sample_set
+
+  def input_folder(self) -> str:
+    return self.input_dir
+
+  def output_folder(self) -> str:
+    return self.output_dir
 
 
 class PointCloud2ResiPredictions(abc.ABC):

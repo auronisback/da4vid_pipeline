@@ -11,20 +11,21 @@ class BackboneFilteringStepTest(unittest.TestCase):
 
   def setUp(self):
     self.backbone_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'backbone_filtering_test', 'inputs')
-    self.output_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'backbone_filtering_test', 'outputs')
+    self.step_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'backbone_filtering_test', 'step_folder')
 
   def tearDown(self):
-    shutil.rmtree(self.output_folder)
+    shutil.rmtree(self.step_folder)
 
   def test_filtering_with_ss_threshold(self):
     sample_set = sample_set_from_backbones(self.backbone_folder)
     filtered_set = BackboneFilteringStep(
+      name='bb_filter_test',
       ss_threshold=4,
       rog_cutoff=3,
       rog_percentage=False,
-      output_dir=self.output_folder
+      folder=self.step_folder
     ).execute(sample_set)
-    self.assertEqual(11, len(filtered_set.samples()))
+    self.assertEqual(17, len(filtered_set.samples()))
     counts = {}
     for sample in filtered_set.samples():
       self.assertTrue(os.path.isfile(sample.filepath))
