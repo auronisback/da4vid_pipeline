@@ -63,7 +63,7 @@ class Residue:
     self.atoms = atoms if atoms is not None else []
     for atom in self.atoms:  # Adding residue to atoms
       atom.residue = self
-    self.props = props if props is not None else {}  # Generic properties of this residue
+    self.props = NestedDict(props)  # Generic properties of this residue
 
   def set_code(self, code: str) -> None:
     """
@@ -98,7 +98,7 @@ class Residue:
     """
     return self.__code3
 
-  def get_backbone_atoms(self) -> List[Atom]:
+  def backbone_atoms(self) -> List[Atom]:
     """
     Gets only the backbone atoms in the residue (those with N, CA, C, O codes).
     :return: A list of backbone Atoms
@@ -153,26 +153,28 @@ class Chain:
     :return: A torch.Tensor with coordinates of all atoms in the chain
     """
     if self.__coords is None:
-      coords = []
-      for residue in self.residues:
-        for atom in residue.atoms:
-          if atom.coords is not None:
-            coords.append(atom.coords)
-      self.__coords = torch.tensor(coords).to(self.device)
+      self.__coords = torch.tensor([
+        atom.coords for resi in self.residues
+        for atom in resi.atoms if atom.coords is not None
+      ]).to(self.device)
     return self.__coords
 
-  def get_backbone_atoms(self) -> List[Atom]:
+  def atoms(self) -> List[Atom]:
+    return [atom for resi in self.residues for atom in resi.atoms]
+
+  def backbone_atoms(self) -> List[Atom]:
     """
     Get all backbone atoms of residues in this chain.
     :return: A list of all backbone atoms for each residue
     """
-    return [atom for resi in self.residues for atom in resi.get_backbone_atoms()]
+    return [atom for resi in self.residues for atom in resi.backbone_atoms()]
 
 
 class Chains:
   """
   Utility class to instantiate chains.
   """
+
   @staticmethod
   def from_sequence(sequence: str, chain_separator: str = ':') -> List[Chain]:
     if not sequence:
@@ -204,6 +206,8 @@ class Protein:
     self.__coords = None  # Cache for coordinates
     self.__rog = None  # Cache for Radius of Gyration (NOTE: is this needed?)
     self.__ca_coords = None  # Cache for coordinates of C-alpha atoms
+    self.__residues = None  # Cache for residues
+    self.__atoms = None  # Cache for atoms
 
   def sequence(self, separator: str = '') -> str:
     """
@@ -313,6 +317,25 @@ class Protein:
     """
     return self.props.has_key(key)
 
+  def atoms(self) -> List[Atom]:
+    """
+    Returns all Atom objects in all chains for the protein, in the order defined by chains and
+    residues.
+    :return: The list of all atoms in the protein
+    """
+    if not self.__atoms:
+        self.__atoms = [atom for resi in self.residues() for atom in resi.atoms]
+    return self.__atoms
+
+  def residues(self) -> List[Residue]:
+    """
+    Returns all Residue objects in all chains for the protein, in the order defined by chains.
+    :return: The list of all residues in the protein
+    """
+    if not self.__residues:
+      self.__residues = [resi for chain in self.chains for resi in chain.residues]
+    return self.__residues
+
 
 class Proteins:
   """
@@ -363,6 +386,11 @@ class Proteins:
 
 
 class NestedDict:
+  """
+  Abstraction for nested dictionary, whose key string key indicates a path in the
+  tree of dictionary stored by this object. E.g., the key 'foo.bar' refers to the
+  inner dictionary with key foo and to the element with key bar in the latter.
+  """
   def __init__(self, dictionary: Dict[str, Any] = None):
     """
     Created a new nested dictionary object, optionally specifying
@@ -436,6 +464,7 @@ class Epitope:
   """
   Models an epitope in a protein.
   """
+
   def __init__(self, chain: str, start: int, end: int, protein: Protein = None):
     """
     Creates a new epitope, optionally specifying a protein it belongs.

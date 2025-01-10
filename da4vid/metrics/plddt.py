@@ -30,11 +30,11 @@ def evaluate_plddt(proteins: Union[Protein, List[Protein]], plddt_prop: str = 'p
       resi_plddt = []
       for chain in protein.chains:
         for resi in chain.residues:
-          if 'plddt' not in resi.props:  # Evaluating mean pLDDT for residue by its atoms
-            atoms_plddt = (torch.tensor([atom.props['plddt'] for atom in resi.atoms if 'plddt' in atom.props]).
-                           to(device))
-            resi.props['plddt'] = atoms_plddt.nanmean().item()
-          resi_plddt.append(resi.props['plddt'])
+          if not resi.props.has_key(plddt_prop):  # Evaluating mean pLDDT for residue by its atoms
+            atoms_plddt = (torch.tensor([atom.props[plddt_prop] for atom in resi.atoms
+                                         if plddt_prop in atom.props]).to(device))
+            resi.props.add_value(plddt_prop, atoms_plddt.nanmean().item())
+          resi_plddt.append(resi.props.get_value(plddt_prop))
       mean_plddt = torch.nanmean(torch.tensor(resi_plddt).to(device))
       proteins_plddt.append(mean_plddt)
       # Adding pLDDT to protein if not NaN

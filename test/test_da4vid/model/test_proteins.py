@@ -91,7 +91,7 @@ class ResidueTest(unittest.TestCase):
       Atom(code='CB'), Atom(code='OG1'),
       Atom(code='CG2'), Atom(code='OXT'),
     ])
-    backbone = residue.get_backbone_atoms()
+    backbone = residue.backbone_atoms()
     self.assertEqual(4, len(backbone), 'Invalid backbone length')
     self.assertEqual('N', backbone[0].code)
     self.assertEqual('CA', backbone[1].code)
@@ -142,7 +142,7 @@ class ChainTest(unittest.TestCase):
         Atom(code='CB'), Atom(code='OXT'),
       ])
     ])
-    backbone = chain.get_backbone_atoms()
+    backbone = chain.backbone_atoms()
     self.assertEqual(8, len(backbone), 'Invalid backbone length')
     self.assertEqual('N', backbone[0].code)
     self.assertEqual('CA', backbone[1].code)

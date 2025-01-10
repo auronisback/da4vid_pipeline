@@ -24,7 +24,7 @@ def dssp(proteins: Union[List[Protein], Protein], device: str = 'cpu') -> Union[
     coords = []
     residues = [residue for chain in protein.chains for residue in chain.residues]
     for residue in residues:
-      coords.append([[*atom.coords] for atom in residue.get_backbone_atoms()])
+      coords.append([[*atom.coords] for atom in residue.backbone_atoms()])
     batches.append(coords)
   # Checking if they are stackable
   stackable = True
