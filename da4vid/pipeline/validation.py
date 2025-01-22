@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import sys
@@ -13,7 +14,7 @@ from da4vid.io import read_from_pdb
 from da4vid.io.fasta_io import write_fasta
 from da4vid.metrics import evaluate_plddt, rog
 from da4vid.model.proteins import Proteins
-from da4vid.model.samples import SampleSet, Fold
+from da4vid.model.samples import SampleSet, Fold, Sequence, Sample
 from da4vid.pipeline.steps import PipelineStep, DockerStep
 
 
@@ -21,6 +22,7 @@ class OmegaFoldStep(DockerStep):
   """
   Class implementing an OmegaFold prediction step in the pipeline.
   """
+
   class OmegaFoldConfig:
     def __init__(self, num_recycles: int = 5, model_weights: str = '2'):
       """
@@ -231,13 +233,14 @@ class ColabFoldStep(DockerStep):
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
     tmp_input_folder = self.__create_tmp_input_folder()
+    os.makedirs(self.output_dir, exist_ok=True)
     self.__create_input_fastas(sample_set, tmp_input_folder)
     container = self.__create_container(tmp_input_folder)
     if not container.run():
       raise RuntimeError('ColabFold container failed')
-    new_set = self.__create_new_sample_set(sample_set)
+    self.__add_predicted_folds(sample_set)
     self.__remove_tmp_input_folder(tmp_input_folder)
-    return new_set
+    return sample_set
 
   def __create_container(self, input_dir: str) -> ColabFoldContainer:
     return ColabFoldContainer(
@@ -261,21 +264,65 @@ class ColabFoldStep(DockerStep):
     return tmp_input_folder
 
   @staticmethod
-  def __create_input_fastas(sample_set: SampleSet, tmp_input_folder: str):
+  def __create_input_fastas(sample_set: SampleSet, tmp_input_folder: str) -> None:
     for sample in sample_set.samples():
       out_fasta = os.path.join(tmp_input_folder, f'{sample.name}.fa')
       write_fasta([seq.protein for seq in sample.sequences()], out_fasta, overwrite=True)
 
+  def __add_predicted_folds(self, sample_set: SampleSet) -> None:
+    """
+    Updates the sample set by adding ColabFold predicted folds.
+    :param sample_set: The original sample set
+    """
+    for sample_folder in os.listdir(self.output_dir):
+      path = os.path.join(self.output_dir, sample_folder)
+      if os.path.isdir(path):
+        sample = sample_set.get_sample_by_name(sample_folder)
+        if not sample:
+          logging.warning(f'Sample not found in sample set: {sample_folder}')
+        else:
+          self.__process_sample_folds(sample, path)
+
+  def __process_sample_folds(self, sample: Sample, folds_folder: str) -> None:
+    print(f'Processing folder: {folds_folder}')
+    for f in os.listdir(folds_folder):
+      filepath = os.path.join(folds_folder, f)
+      if "rank_001" not in f:
+        self.__remove_unused_entry(filepath)
+      else:  # Best ranked
+        self.__add_fold_to_sample(filepath, sample)
+    # All done, folder will be removed
+    shutil.rmtree(folds_folder)
+
+  def __add_fold_to_sample(self, filepath: str, sample: Sample):
+    if filepath.endswith('.pdb'):
+      f = os.path.basename(filepath)
+      sequence_name = '_'.join(f.split('_')[:-8])  # AF2 outputs puts 8 '_' separated fields
+      new_path = os.path.join(self.output_dir, f'{sequence_name}.pdb')
+      shutil.move(filepath, new_path)
+      sequence = sample.get_sequence_by_name(sequence_name)
+      if not sequence:
+        logging.warning(f'No sequence found for {sequence_name}')
+      else:
+        fold = self.__extract_fold(new_path, sequence)
+        sequence.add_folds(fold)
+
+  @staticmethod
+  def __remove_unused_entry(filepath: str):
+    # Removing all prediction which are not best ranked
+    if os.path.isdir(filepath):
+      shutil.rmtree(filepath)
+    else:
+      os.unlink(filepath)
+
+  def __extract_fold(self, path: str, sequence: Sequence) -> Fold:
+    protein = read_from_pdb(path, b_fact_prop='plddt')
+    fold = Fold(sequence=sequence, filepath=path, model=self.config.model_name, protein=protein)
+    return fold
+
   @staticmethod
   def __remove_tmp_input_folder(tmp_input_folder: str):
     shutil.rmtree(tmp_input_folder)
-
-  def __create_new_sample_set(self, old_sample_set: SampleSet) -> SampleSet:
-    # new_sample_set = SampleSet()
-    # for sample in old_sample_set.samples():
-    #   for sequence in sample.sequences():
-    #     seq_
-    return SampleSet()
 
   def input_folder(self) -> str:
     return self.input_dir

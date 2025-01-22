@@ -199,3 +199,29 @@ class DockerStep(PipelineStep, abc.ABC):
     super().__init__(**kwargs)
     self.client = client
     self.image = image
+
+
+class FoldCollectionStep(PipelineStep):
+  """
+  Utility Step to collect all folds for a specific model in a sample set into a new sample set.
+  """
+
+  def __init__(self, name: str, model: str, **kwargs):
+    """
+    Creates the step which will collect folds for the given model.
+    :param name: The name of this step in the pipeline
+    :param model: The model whose folds will be collected into a new sample set
+    :param kwargs: Other arguments
+    """
+    super().__init__(name, **kwargs)
+    self.model = model
+
+  def execute(self, sample_set: SampleSet) -> SampleSet:
+    return sample_set.folded_sample_set(self.model)
+
+  def output_folder(self) -> str:
+    return ''
+
+  def input_folder(self) -> str:
+    return ''
+

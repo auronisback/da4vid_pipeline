@@ -39,3 +39,6 @@ test pipeline:
                     plddt_threshold: 85
                     average_cutoff: 20
                     max_samples: 10
+            -   fold_collection:
+                    name: 'my_collector'
+                    model: 'colabfold'

@@ -62,7 +62,7 @@ class PipelineCreatorTest(unittest.TestCase):
                      it1_step.steps[2].get_context_folder())
     it2_step = pipeline.steps[1]
     self.assertIsInstance(it2_step, CompositeStep)
-    self.assertEqual(4, len(it2_step.steps))
+    self.assertEqual(5, len(it2_step.steps))
     self.assertEqual(os.path.abspath(os.path.join(self.resources, 'run', '2nd_iteration', 'omegafold')),
                      it2_step.steps[0].get_context_folder())
     self.assertEqual(os.path.abspath(os.path.join(self.resources, 'run', '2nd_iteration', 'sequence_filtering')),
@@ -71,6 +71,7 @@ class PipelineCreatorTest(unittest.TestCase):
                      it2_step.steps[2].get_context_folder())
     self.assertEqual(os.path.abspath(os.path.join(self.resources, 'run', '2nd_iteration', 'colabfold_filtering')),
                      it2_step.steps[3].get_context_folder())
+    self.assertEqual('my_collector', it2_step.steps[4].name)
 
   def test_pipeline_from_yml_raise_error_if_two_steps_have_the_same_context_folder(self):
       with self.assertRaises(PipelineCreator.PipelineCreationError):

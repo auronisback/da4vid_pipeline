@@ -17,7 +17,7 @@ from da4vid.model.proteins import Protein, Epitope
 from da4vid.model.samples import Sample
 from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep
 from da4vid.pipeline.interaction import MasifStep
-from da4vid.pipeline.steps import CompositeStep, PipelineStep, PipelineRootStep
+from da4vid.pipeline.steps import CompositeStep, PipelineStep, PipelineRootStep, FoldCollectionStep
 from da4vid.pipeline.validation import OmegaFoldStep, SequenceFilteringStep, ColabFoldStep
 
 
@@ -256,6 +256,12 @@ class PipelineCreator:
           image=self.static_config.masif_image,
           gpu_manager=self.static_config.gpu_manager
         )
+      case 'fold_collection':
+        return FoldCollectionStep(
+          name=el.get('name', 'fold_collection'),
+          model=el['model'],
+          parent=parent
+        )
       case _:  # Any other case is hopefully a composite step
         comp_step = CompositeStep(name=el_name, parent=parent, folder=el.get('folder', None))
         comp_step.add_step([self.__process_element(root, comp_step, step_el) for step_el in el['steps']])
@@ -319,6 +325,8 @@ class PipelinePrinter:
       self.__print_colabfold_step(step, header, last)
     elif isinstance(step, MasifStep):
       self.__print_masif_step(step, header, last)
+    elif isinstance(step, FoldCollectionStep):
+      self.__print_fold_collection_step(step, header, last)
     else:
       print(header, file=self.file)
 
@@ -396,3 +404,6 @@ class PipelinePrinter:
   def __print_masif_step(self, masif_step: MasifStep, header: str, last: bool) -> None:
     print(f'{header + (self.ELBOW if last else self.TEE)}MaSIF: {masif_step.name}', file=self.file)
 
+  def __print_fold_collection_step(self, fc_step: FoldCollectionStep, header: str, last: bool) -> None:
+    print(f'{header + (self.ELBOW if last else self.TEE)}FoldCollection', file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Model: {fc_step.model}', file=self.file)
