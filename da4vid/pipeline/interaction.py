@@ -41,6 +41,10 @@ class MasifStep(DockerStep):
     self.__refactor_outputs()
     return self.__evaluate_interactions(sample_set)
 
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    # Simply extract interactions evaluated
+    return self.__evaluate_interactions(sample_set)
+
   def __create_input_folder(self, sample_set: SampleSet):
     os.makedirs(self.input_dir, exist_ok=True)
     with open(os.path.join(self.input_dir, 'list.txt'), 'w') as f:

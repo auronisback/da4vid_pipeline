@@ -39,6 +39,19 @@ class PipelineStep(abc.ABC):
     pass
 
   @abc.abstractmethod
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    """
+    Method used to recover data from a previously executed step. This method
+    will be called when a pipeline evaluation has been interrupted for some
+    reason, and should be resumed. It should differ from the *execute* method
+    as it should not execute heavy computations and instead rely on output
+    files obtained in a previous execution.
+    :param sample_set: The input sample set
+    :return: The sample set object as if this step was executed again
+    """
+    pass
+
+  @abc.abstractmethod
   def output_folder(self) -> str:
     """
     Gets the output folder of the concrete step.
@@ -147,6 +160,11 @@ class CompositeStep(PipelineStep):
       return self.steps[-1].output_folder()
     raise AttributeError('No steps set in this composite step')
 
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    for step in self.steps:
+      sample_set = step.resume(sample_set)
+    return sample_set
+
 
 class PipelineRootStep(CompositeStep):
   """
@@ -183,6 +201,12 @@ class PipelineRootStep(CompositeStep):
       sample_set.add_samples(self.antigen)
     return super().execute(sample_set)
 
+  def resume(self, sample_set: SampleSet = None) -> SampleSet:
+    if sample_set is None:
+      sample_set = SampleSet()
+      sample_set.add_samples(self.antigen)
+    return super().resume(sample_set)
+
 
 class DockerStep(PipelineStep, abc.ABC):
   """
@@ -218,6 +242,10 @@ class FoldCollectionStep(PipelineStep):
 
   def execute(self, sample_set: SampleSet) -> SampleSet:
     return sample_set.folded_sample_set(self.model)
+
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    # It is equivalent to the execute step
+    return self.execute(sample_set)
 
   def output_folder(self) -> str:
     return ''

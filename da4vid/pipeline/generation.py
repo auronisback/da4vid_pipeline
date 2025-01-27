@@ -20,6 +20,7 @@ class RFdiffusionStep(DockerStep):
   """
   Abstracts a step of RFdiffusion in the pipeline.
   """
+
   class RFdiffusionConfig:
     """
     Class encapsulating the configuration for RFdiffusion.
@@ -87,6 +88,10 @@ class RFdiffusionStep(DockerStep):
       raise RuntimeError('RFdiffusion step failed')
     return self.__create_sample_set()
 
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    # Just creating the sample set from the outputs
+    return self.__create_sample_set()
+
   @staticmethod
   def __check_params(protein):
     if not os.path.isfile(protein.filename):
@@ -142,6 +147,7 @@ class BackboneFilteringStep(PipelineStep):
   """
   Abstract the step of filtering backbones according to their structural data.
   """
+
   def __init__(self, ss_threshold: int, rog_cutoff: float, rog_percentage: bool = False,
                gpu_manager: CudaDeviceManager = None, **kwargs):
     """
@@ -194,6 +200,13 @@ class BackboneFilteringStep(PipelineStep):
       sample.filepath = sample.protein.filename = new_location  # Updating protein location
     return filtered_set
 
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    # In this case, we re-execute the filtering (a crucial point
+    # if filtering options are changed), while first removing previous filtered samples
+    if os.path.isdir(self.output_dir):
+      shutil.rmtree(self.output_dir)
+    return self.execute(sample_set)
+
   def input_folder(self) -> str:
     # This step does not use an input directory
     return ''
@@ -206,10 +219,12 @@ class ProteinMPNNStep(DockerStep):
   """
   Abstracts a step of sequence sampling with ProteinMPNN.
   """
+
   class ProteinMPNNConfig:
     """
     Class storing configuration of a ProteinMPNN step.
     """
+
     def __init__(self, seqs_per_target: int, sampling_temp: float = 0.2,
                  backbone_noise: float = 0, batch_size: int = 32):
       """
@@ -294,24 +309,34 @@ class ProteinMPNNStep(DockerStep):
       raise RuntimeError('ProteinMPNN step failed')
     # Creating the output set of samples
     print('Loading sequences from FASTA')
-    new_set = SampleSet()
-    new_set.add_samples([Sample(name=s.name, filepath=s.filepath, protein=s.protein) for s in sample_set.samples()])
     for sample in tqdm(sample_set.samples(), file=sys.stdout):
       fasta_filepath = '.'.join(os.path.basename(sample.filepath).split('.')[:-1]) + '.fa'
-      sequences = self.__rename_sequences_and_extract_data(os.path.join(
+      proteins = self.__extract_proteins_from_fasta(os.path.join(
         self.__sequences_output_dir(), fasta_filepath))
+      write_fasta(proteins, proteins[0].filename, overwrite=True)
       # Adding props to original protein
-      for protein in sequences:
-        protein.add_prop('protein_mpnn', sequences[0].get_prop('protein_mpnn'))
+      for protein in proteins:
+        protein.add_prop('protein_mpnn', proteins[0].get_prop('protein_mpnn'))
       sample.add_sequences(
-        [Sequence(name=s.name, filepath=fasta_filepath, protein=s, sample=sample) for s in sequences])
+        [Sequence(name=s.name, filepath=fasta_filepath, protein=s, sample=sample) for s in proteins])
     # Removing sequences directory after copy
     shutil.rmtree(self.__sequences_output_dir())
     return sample_set
 
-  def __rename_sequences_and_extract_data(self, fasta_path: str) -> List[Protein]:
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    for sample in tqdm(sample_set.samples(), file=sys.stdout):
+      fasta_filepath = '.'.join(os.path.basename(sample.filepath).split('.')[:-1]) + '.fa'
+      proteins = self.__extract_proteins_from_fasta(os.path.join(
+        self.output_dir, fasta_filepath))
+      for protein in proteins:
+        protein.add_prop('protein_mpnn', proteins[0].get_prop('protein_mpnn'))
+        sample.add_sequences([Sequence(name=s.name, filepath=fasta_filepath, protein=s, sample=sample)
+                              for s in proteins])
+    return sample_set
+
+  def __extract_proteins_from_fasta(self, fasta_path: str) -> List[Protein]:
     """
-    Renames FASTA sequences produced by this step and extracts their Sequence objects.
+    Recovers the protein from FASTA sequences produced by this step.
     :param fasta_path: The path on which extract FASTA sequences
     :return: The list of generated proteins
     """
@@ -325,7 +350,6 @@ class ProteinMPNNStep(DockerStep):
     output_fasta = os.path.join(self.output_dir, f'{sample_name}.fa')
     for protein in proteins:
       protein.filename = output_fasta
-    write_fasta(proteins, output_fasta, overwrite=True)
     # Removing original sequences directory
     return proteins
 

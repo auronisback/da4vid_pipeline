@@ -79,6 +79,11 @@ class OmegaFoldStep(DockerStep):
     self.__merge_data(sample_set)
     return sample_set
 
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    # Just merging data
+    self.__merge_data(sample_set)
+    return sample_set
+
   def __merge_data(self, sample_set: SampleSet) -> SampleSet:
     print('Retrieving Omegafold predictions')
     pdb_files = []
@@ -160,6 +165,12 @@ class SequenceFilteringStep(PipelineStep):
     self.__save_filtered_set(filtered_set)
     return filtered_set
 
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    # Repeating the filtering step after deleting previous folder
+    if os.path.exists(self.output_dir):
+      shutil.rmtree(self.output_dir)
+    return self.execute(sample_set)
+
   def __filter_by_plddt(self, folds: List[Fold]) -> List[Fold]:
     if not folds:
       return []
@@ -240,6 +251,11 @@ class ColabFoldStep(DockerStep):
       raise RuntimeError('ColabFold container failed')
     self.__add_predicted_folds(sample_set)
     self.__remove_tmp_input_folder(tmp_input_folder)
+    return sample_set
+
+  def resume(self, sample_set: SampleSet) -> SampleSet:
+    # Just adding predictions to sample set
+    self.__add_predicted_folds(sample_set)
     return sample_set
 
   def __create_container(self, input_dir: str) -> ColabFoldContainer:
