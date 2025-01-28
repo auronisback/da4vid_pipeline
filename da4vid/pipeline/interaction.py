@@ -10,7 +10,7 @@ from da4vid.docker.masif import MasifContainer
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.model.proteins import Protein
 from da4vid.model.samples import SampleSet
-from da4vid.pipeline.steps import DockerStep
+from da4vid.pipeline.steps import DockerStep, PipelineException
 
 
 class MasifStep(DockerStep):
@@ -30,7 +30,7 @@ class MasifStep(DockerStep):
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
     self.container_out_dir = os.path.join(self.get_context_folder(), 'tmp_out')
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     """
     Executes the MaSIF site interaction evaluation on the sample set.
     :param sample_set: The sample set of proteins whose interaction needs to be evaluated
@@ -41,7 +41,7 @@ class MasifStep(DockerStep):
     self.__refactor_outputs()
     return self.__evaluate_interactions(sample_set)
 
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     # Simply extract interactions evaluated
     return self.__evaluate_interactions(sample_set)
 
@@ -63,7 +63,8 @@ class MasifStep(DockerStep):
       input_folder=self.input_dir,
       output_folder=self.container_out_dir
     )
-    masif.run()
+    if not masif.run():
+      raise PipelineException('MaSIF container failed')
 
   def __refactor_outputs(self):
     os.makedirs(self.output_dir, exist_ok=True)

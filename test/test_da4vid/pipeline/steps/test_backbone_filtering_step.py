@@ -24,7 +24,7 @@ class BackboneFilteringStepTest(unittest.TestCase):
       rog_cutoff=3,
       rog_percentage=False,
       folder=self.step_folder
-    ).execute(sample_set)
+    )._execute(sample_set)
     self.assertEqual(17, len(filtered_set.samples()))
     counts = {}
     for sample in filtered_set.samples():

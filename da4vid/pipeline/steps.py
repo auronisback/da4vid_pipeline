@@ -1,6 +1,6 @@
 import abc
 import os.path
-from typing import List
+from typing import List, TypeVar, Callable, Any
 
 import docker
 from pathvalidate import sanitize_filename
@@ -8,18 +8,45 @@ from pathvalidate import sanitize_filename
 from da4vid.model.proteins import Epitope
 from da4vid.model.samples import SampleSet, Sample
 
+# Generic type for subclasses of specific steps
+T = TypeVar('T', bound='PipelineStep')
+
+
+class PipelineException(Exception):
+  """
+  Class abstracting all pipeline exceptions.
+  """
+  def __init__(self, message: str = ''):
+    super().__init__()
+    self.message = message
+
 
 class PipelineStep(abc.ABC):
   """
   Abstracts a generic step in the pipeline.
   """
 
-  def __init__(self, name: str, parent=None, folder: str | None = None, log_on_file: bool = True):
+  def __init__(self, name: str, parent=None, folder: str | None = None, log_on_file: bool = True,
+               pre_step_fn: List[Callable[[T, Any], None]] | Callable[[T, Any], None] = None,
+               post_step_fn: List[Callable[[T, Any], None]] | Callable[[T, Any], None] = None,
+               failed_step_fn: List[Callable[[T, PipelineException, Any], None]] |
+                               Callable[[T, PipelineException, Any], None] = None,
+               **callable_kwargs):
     """
-    Creates an abstract step.
+    Creates an abstract step, specifying its name, its optional parent, the folder in
+    which IO operations of the step should be executed, a flag indicating whether to
+    print logs on file rather than stdout/stderr, and three functions (or list of functions)
+    which will be called back at specific step events. The first two functions will
+    be called respectively before and after, while the third is fired when errors in the
+    pipeline occur and accepts the pipeline exception object as second parameters.
     :param name: The name of the step
     :param parent: The parent step
     :param folder: The folder (relative or absolute) in which the step is executed
+    :param pre_step_fn: A function or a list of functions which needs to be executed
+                        before the execution of the concrete step
+    :param pre_step_fn: A function or a list of functions which needs to be executed
+                        after the execution of the concrete step
+    :param callable_kwargs: The kwargs dictionary to pass to callable functions
     """
     self.name = name
     self.parent = parent
@@ -28,18 +55,75 @@ class PipelineStep(abc.ABC):
     self.__identifier = None  # Caching the identifier
     self.out_logfile = os.path.join(self.get_context_folder(), 'stdout.log') if log_on_file else None
     self.err_logfile = os.path.join(self.get_context_folder(), 'stderr.log') if log_on_file else None
+    self.__pre_step_fn = [] if not pre_step_fn else (
+      pre_step_fn if isinstance(pre_step_fn, List) else [pre_step_fn])
+    self.__post_step_fn = [] if not post_step_fn else (
+      post_step_fn if isinstance(post_step_fn, List) else [post_step_fn])
+    self.__failed_step_fn = [] if not failed_step_fn else (
+      failed_step_fn if isinstance(failed_step_fn, List) else [failed_step_fn])
+    self.__callable_kwargs = callable_kwargs | {}
+
+  def execute(self, sample_set: SampleSet) -> SampleSet:
+    """
+    Executes the step. It will execute any pre-step functions registered in the step,
+    and will then execute the actual step logic. If the step ends successfully,
+    each registered post-step function will be executed, otherwise failure functions
+    will be fired and then the PipelineException will be rethrown.
+    :param sample_set: The input sample set
+    :return: The sample set after the step evaluation
+    """
+    try:
+      for fn in self.__pre_step_fn:
+        fn(self, **self.__callable_kwargs)
+      result_set = self._execute(sample_set)
+      for fn in self.__post_step_fn:
+        fn(self, **self.__callable_kwargs)
+      return result_set
+    except PipelineException as e:
+      for fn in self.__failed_step_fn:
+        fn(self, e, **self.__callable_kwargs)
+      raise e
 
   @abc.abstractmethod
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     """
     Abstract method executing the concrete step.
     :param sample_set: The set of samples on which execute the method
     :return: Anything useful the concrete method wishes to return
     """
-    pass
+    try:
+      for fn in self.__pre_step_fn:
+        fn(self, **self.__callable_kwargs)
+      result_set = self._execute(sample_set)
+      for fn in self.__post_step_fn:
+        fn(self, **self.__callable_kwargs)
+      return result_set
+    except PipelineException as e:
+      for fn in self.__failed_step_fn:
+        fn(self, e, **self.__callable_kwargs)
+      raise e
+
+  def resume(self, sample_set) -> SampleSet:
+    """
+    Resumes the last execution of this step. Pre-, post- and failure-step callbacks will be
+    fired according to the logic in the *execution* method.
+    :param sample_set: The input sample set
+    :return: The sample set after the step resuming
+    """
+    try:
+      for fn in self.__pre_step_fn:
+        fn(self, **self.__callable_kwargs)
+      result_set = self._resume(sample_set)
+      for fn in self.__post_step_fn:
+        fn(self, **self.__callable_kwargs)
+      return result_set
+    except PipelineException as e:
+      for fn in self.__failed_step_fn:
+        fn(self, e, **self.__callable_kwargs)
+      raise e
 
   @abc.abstractmethod
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     """
     Method used to recover data from a previously executed step. This method
     will be called when a pipeline evaluation has been interrupted for some
@@ -98,6 +182,36 @@ class PipelineStep(abc.ABC):
     """
     return sanitize_filename(name.replace(' ', '_'))
 
+  def register_pre_step_fn(self, pre_step_fn: List[Callable[[T, Any], None]] | Callable[[T, Any], None]) -> None:
+    """
+    Adds a new pre-step function (or a list of pre-step functions).
+    :param pre_step_fn: The function or the list of functions which will
+                        be run before the step execution
+    """
+    self.__pre_step_fn = self.__register_fn(self.__pre_step_fn, pre_step_fn)
+
+  def register_post_step_fn(self, post_step_fn: List[Callable[[T, Any], None]] | Callable[[T, Any], None]) -> None:
+    """
+    Adds a new pre-step function (or a list of pre-step functions).
+    :param post_step_fn: The function or the list of functions which will
+                         be run after a successful step execution
+    """
+    self.__post_step_fn = self.__register_fn(self.__post_step_fn, post_step_fn)
+
+  def register_failed_step_fn(self, failed_step_fn:
+                              List[Callable[[T, PipelineException, Any], None]] |
+                              Callable[[T, PipelineException, Any], None]) -> None:
+    """
+    Adds a new pre-step function (or a list of pre-step functions).
+    :param failed_step_fn: The function or the list of functions which will
+                           be fired if the step execution results in errors
+    """
+    self.__failed_step_fn = self.__register_fn(self.__failed_step_fn, failed_step_fn)
+
+  @staticmethod
+  def __register_fn(registered_fn, new_fn):
+    return registered_fn + (new_fn if isinstance(new_fn, List) else [new_fn])
+
 
 class CompositeStep(PipelineStep):
   def __init__(self, steps: List[PipelineStep] = None, **kwargs):
@@ -129,13 +243,13 @@ class CompositeStep(PipelineStep):
     for step in self.steps:
       step.parent = self
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     """
     Executes all steps in the collection.
     :return: The sample set obtained by performing all steps sequentially
     """
     for step in self.steps:
-      sample_set = step.execute(sample_set)
+      sample_set = step._execute(sample_set)
     return sample_set
 
   def input_folder(self) -> str:
@@ -160,9 +274,9 @@ class CompositeStep(PipelineStep):
       return self.steps[-1].output_folder()
     raise AttributeError('No steps set in this composite step')
 
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     for step in self.steps:
-      sample_set = step.resume(sample_set)
+      sample_set = step._resume(sample_set)
     return sample_set
 
 
@@ -170,6 +284,7 @@ class PipelineRootStep(CompositeStep):
   """
   Abstracts the root element of the pipeline.
   """
+
   def __init__(self, name: str, antigen: Sample, epitope: Epitope, folder: str):
     """
     Defines the root step of the pipeline, a composite step which includes every
@@ -188,7 +303,7 @@ class PipelineRootStep(CompositeStep):
     self.antigen = antigen
     self.epitope = epitope
 
-  def execute(self, sample_set: SampleSet = None) -> SampleSet:
+  def _execute(self, sample_set: SampleSet = None) -> SampleSet:
     """
     Executes the pipeline. If sample set is not given, it will be automatically
     inferred by the antigen and the epitope parameters.
@@ -199,19 +314,20 @@ class PipelineRootStep(CompositeStep):
     if sample_set is None:
       sample_set = SampleSet()
       sample_set.add_samples(self.antigen)
-    return super().execute(sample_set)
+    return super()._execute(sample_set)
 
-  def resume(self, sample_set: SampleSet = None) -> SampleSet:
+  def _resume(self, sample_set: SampleSet = None) -> SampleSet:
     if sample_set is None:
       sample_set = SampleSet()
       sample_set.add_samples(self.antigen)
-    return super().resume(sample_set)
+    return super()._resume(sample_set)
 
 
 class DockerStep(PipelineStep, abc.ABC):
   """
   Abstracts a step in the pipeline which is executed as a Docker container.
   """
+
   def __init__(self, client: docker.DockerClient, image: str, **kwargs):
     """
     Initializes parameters common to steps executing operations in Docker containers.
@@ -240,16 +356,15 @@ class FoldCollectionStep(PipelineStep):
     super().__init__(name, **kwargs)
     self.model = model
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     return sample_set.folded_sample_set(self.model)
 
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     # It is equivalent to the execute step
-    return self.execute(sample_set)
+    return self._execute(sample_set)
 
   def output_folder(self) -> str:
     return ''
 
   def input_folder(self) -> str:
     return ''
-

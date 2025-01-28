@@ -48,7 +48,7 @@ class MasifStepTest(unittest.TestCase):
       gpu_manager=self.gpu_manager,
       image=self.masif_image
     )
-    res_set = step.execute(sample_set)
+    res_set = step._execute(sample_set)
     output_folders = os.listdir(step.output_dir)
     self.assertEqual(3, len(output_folders))
     self.assertIn('sample1000', output_folders)

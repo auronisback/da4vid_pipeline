@@ -369,6 +369,8 @@ class PipelinePrinter:
     print(f'{header}{self.BLANK if last else self.PIPE}  +  Backbone Noise: {pnn_step.config.backbone_noise}',
           file=self.file),
     print(f'{header}{self.BLANK if last else self.PIPE}  +  Batch Size: {pnn_step.config.batch_size}', file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Soluble Model: {pnn_step.config.use_soluble_model}',
+          file=self.file)
 
   def __print_omegafold_step(self, of_step: OmegaFoldStep, header: str, last: bool) -> None:
     print(f'{header + (self.ELBOW if last else self.TEE)}OmegaFold: {of_step.name}', file=self.file)

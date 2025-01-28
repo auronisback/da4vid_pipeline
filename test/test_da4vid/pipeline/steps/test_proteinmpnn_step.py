@@ -42,7 +42,7 @@ class ProteinMPNNStepTest(unittest.TestCase):
       client=self.client,
       gpu_manager=self.gpu_manager,
       config=config,
-    ).execute(sample_set)
+    )._execute(sample_set)
     samples = new_set.samples()
     self.assertEqual(5, len(samples),
                      f'Invalid number of backbones: {len(samples)} (exp: 5)')

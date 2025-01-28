@@ -13,7 +13,7 @@ from da4vid.io import read_pdb_folder, read_protein_mpnn_fasta
 from da4vid.io.fasta_io import write_fasta
 from da4vid.model.proteins import Protein, Epitope
 from da4vid.model.samples import SampleSet, Sample, Sequence
-from da4vid.pipeline.steps import PipelineStep, DockerStep
+from da4vid.pipeline.steps import PipelineStep, DockerStep, PipelineException
 
 
 class RFdiffusionStep(DockerStep):
@@ -65,7 +65,7 @@ class RFdiffusionStep(DockerStep):
     self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     """
     Executes the RFdiffusion step and returns the list of filenames
     of generated backbones.
@@ -85,10 +85,10 @@ class RFdiffusionStep(DockerStep):
     print(f' - RoG potential: {self.config.rog_potential}')
     container = self.__create_container(sample)
     if not container.run():
-      raise RuntimeError('RFdiffusion step failed')
+      raise PipelineException('RFdiffusion step failed')
     return self.__create_sample_set()
 
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     # Just creating the sample set from the outputs
     return self.__create_sample_set()
 
@@ -168,7 +168,7 @@ class BackboneFilteringStep(PipelineStep):
     self.rog_percentage = rog_percentage
     self.device = gpu_manager.next_device().name if gpu_manager else 'cpu'
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     """
     Executes the filtering and returns the filtered protein objects.
     :return: The sample set with the filtered proteins
@@ -200,12 +200,12 @@ class BackboneFilteringStep(PipelineStep):
       sample.filepath = sample.protein.filename = new_location  # Updating protein location
     return filtered_set
 
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     # In this case, we re-execute the filtering (a crucial point
     # if filtering options are changed), while first removing previous filtered samples
     if os.path.isdir(self.output_dir):
       shutil.rmtree(self.output_dir)
-    return self.execute(sample_set)
+    return self._execute(sample_set)
 
   def input_folder(self) -> str:
     # This step does not use an input directory
@@ -226,7 +226,7 @@ class ProteinMPNNStep(DockerStep):
     """
 
     def __init__(self, seqs_per_target: int, sampling_temp: float = 0.2,
-                 backbone_noise: float = 0, batch_size: int = 32):
+                 backbone_noise: float = 0, batch_size: int = 32, use_soluble_model: bool = False):
       """
       Creates the configuration used in the related ProteinMPNN step.
       :param seqs_per_target: The number of sequences per each backbone
@@ -237,6 +237,7 @@ class ProteinMPNNStep(DockerStep):
                          value should be a divisor of seqs_per_target value, otherwise
                          the actual number of output sequences is the multiple of
                          batch size closest to seqs_per_target
+      :param use_soluble_model: Flag checking whether use soluble model weights. Defaults to False
       :raise ValueError: If batch_size is greater than seqs_per_target, as in this
                          case no sequence will be generated
       """
@@ -246,13 +247,15 @@ class ProteinMPNNStep(DockerStep):
       self.sampling_temp = sampling_temp
       self.backbone_noise = backbone_noise
       self.batch_size = batch_size
+      self.use_soluble_model = use_soluble_model
 
     def __str__(self):
       return (f'protein_mpnn:\n'
               f' - seqs_per_target: {self.seqs_per_target}\n'
               f' - sampling_temp: {self.sampling_temp}\n'
               f' - backbone_noise: {self.backbone_noise}\n'
-              f' - batch_size: {self.batch_size}\n')
+              f' - batch_size: {self.batch_size}\n'
+              f' - use_soluble_model: {self.use_soluble_model}\n')
 
   def __init__(self, epitope: Epitope, gpu_manager: CudaDeviceManager, config: ProteinMPNNConfig, **kwargs):
     """
@@ -275,6 +278,7 @@ class ProteinMPNNStep(DockerStep):
       seqs_per_target=self.config.seqs_per_target,
       sampling_temp=self.config.sampling_temp,
       backbone_noise=self.config.backbone_noise,
+      use_soluble_model=self.config.use_soluble_model,
       batch_size=self.config.batch_size,  # TODO: make a check in order to avoid losing sequences
       client=self.client,
       gpu_manager=self.gpu_manager
@@ -283,7 +287,7 @@ class ProteinMPNNStep(DockerStep):
       self.epitope.chain, [r for r in range(self.epitope.start, self.epitope.end + 1)]
     )
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     """
     Executes the ProteinMPNN step.
     :param sample_set: The sample set on which create sequences
@@ -306,7 +310,7 @@ class ProteinMPNNStep(DockerStep):
       shutil.copy2(sample.filepath, os.path.join(self.input_dir, sample_basename))
     # Running the client
     if not self.container.run():
-      raise RuntimeError('ProteinMPNN step failed')
+      raise PipelineException('ProteinMPNN step failed')
     # Creating the output set of samples
     print('Loading sequences from FASTA')
     for sample in tqdm(sample_set.samples(), file=sys.stdout):
@@ -323,7 +327,7 @@ class ProteinMPNNStep(DockerStep):
     shutil.rmtree(self.__sequences_output_dir())
     return sample_set
 
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     for sample in tqdm(sample_set.samples(), file=sys.stdout):
       fasta_filepath = '.'.join(os.path.basename(sample.filepath).split('.')[:-1]) + '.fa'
       proteins = self.__extract_proteins_from_fasta(os.path.join(

@@ -52,7 +52,7 @@ class RFdiffusionStepTest(unittest.TestCase):
       gpu_manager=self.gpu_manager,
       config=config
     )
-    sample_set = step.execute(orig_set)
+    sample_set = step._execute(orig_set)
     self.assertEqual(3, len(sample_set.samples()))
     orig_sequence = orig_set.samples()[0].protein.sequence()
     for sample in sample_set.samples():

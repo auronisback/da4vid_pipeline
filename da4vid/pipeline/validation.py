@@ -15,7 +15,7 @@ from da4vid.io.fasta_io import write_fasta
 from da4vid.metrics import evaluate_plddt, rog
 from da4vid.model.proteins import Proteins
 from da4vid.model.samples import SampleSet, Fold, Sequence, Sample
-from da4vid.pipeline.steps import PipelineStep, DockerStep
+from da4vid.pipeline.steps import PipelineStep, DockerStep, PipelineException
 
 
 class OmegaFoldStep(DockerStep):
@@ -60,13 +60,13 @@ class OmegaFoldStep(DockerStep):
       err_logfile=self.err_logfile
     )
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     """
     Executes OmegaFold on sequences to refold them.
     :return: A sample set with structure information obtained by OmegaFold prediction
     """
     # Creating output directory
-    os.makedirs(self.output_dir, exist_ok=True)
+    self.__create_directories_from_sample_set(sample_set)
     # Starting OmegaFold
     print('Running OmegaFold for structure prediction')
     print(f' - input folder: {self.input_dir}')
@@ -74,15 +74,24 @@ class OmegaFoldStep(DockerStep):
     print(f' - model weights: {self.config.model_weights}')
     print(f' - num_recycles: {self.config.num_recycles}')
     if not self.container.run():
-      raise ValueError('OmegaFold step failed')
+      raise PipelineException('OmegaFold step failed')
     # Merging data
     self.__merge_data(sample_set)
     return sample_set
 
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     # Just merging data
     self.__merge_data(sample_set)
     return sample_set
+
+  def __create_directories_from_sample_set(self, sample_set: SampleSet) -> None:
+    # Creating output dir
+    os.makedirs(self.output_dir, exist_ok=True)
+    # Inserting data into input dir
+    os.makedirs(self.input_dir, exist_ok=True)
+    sequence_fastas = {sequence.filepath for sequence in sample_set.sequences()}
+    for sequence_fasta in sequence_fastas:
+      shutil.copy2(sequence_fasta, os.path.join(self.input_dir, f'{os.path.basename(sequence_fasta)}'))
 
   def __merge_data(self, sample_set: SampleSet) -> SampleSet:
     print('Retrieving Omegafold predictions')
@@ -145,7 +154,7 @@ class SequenceFilteringStep(PipelineStep):
     self.device = gpu_manager.next_device().name if gpu_manager else 'cpu'
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     """
     Executes the filtering step.
     :return: The SampleSet object with filtered samples for each original backbone
@@ -165,11 +174,11 @@ class SequenceFilteringStep(PipelineStep):
     self.__save_filtered_set(filtered_set)
     return filtered_set
 
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     # Repeating the filtering step after deleting previous folder
     if os.path.exists(self.output_dir):
       shutil.rmtree(self.output_dir)
-    return self.execute(sample_set)
+    return self._execute(sample_set)
 
   def __filter_by_plddt(self, folds: List[Fold]) -> List[Fold]:
     if not folds:
@@ -242,18 +251,18 @@ class ColabFoldStep(DockerStep):
     self.gpu_manager = gpu_manager
     self.max_parallel = max_parallel
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
     tmp_input_folder = self.__create_tmp_input_folder()
     os.makedirs(self.output_dir, exist_ok=True)
     self.__create_input_fastas(sample_set, tmp_input_folder)
     container = self.__create_container(tmp_input_folder)
     if not container.run():
-      raise RuntimeError('ColabFold container failed')
+      raise PipelineException('ColabFold container failed')
     self.__add_predicted_folds(sample_set)
     self.__remove_tmp_input_folder(tmp_input_folder)
     return sample_set
 
-  def resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
     # Just adding predictions to sample set
     self.__add_predicted_folds(sample_set)
     return sample_set

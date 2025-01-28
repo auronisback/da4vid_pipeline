@@ -219,3 +219,10 @@ class SampleSet:
         if fold is not None:
           new_set.add_samples(fold)
     return new_set
+
+  def sequences(self) -> List[Sequence]:
+    """
+    Retrieves all sequences for all the samples in this set.
+    :return: The list of all sequence objects related to samples
+    """
+    return [seq for sample in self.samples() for seq in sample.sequences()]

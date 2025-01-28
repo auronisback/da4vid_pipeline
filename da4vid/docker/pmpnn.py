@@ -30,7 +30,7 @@ class ProteinMPNNContainer(BaseContainer):
 
   def __init__(self, input_dir: str, output_dir: str, client: docker.DockerClient, gpu_manager: CudaDeviceManager,
                seqs_per_target: int, batch_size: int = 32, sampling_temp: float = .1, backbone_noise: float = .0,
-               backbones: List[Protein] | None = None, image: str = DEFAULT_IMAGE,
+               use_soluble_model: bool = False, backbones: List[Protein] | None = None, image: str = DEFAULT_IMAGE,
                out_logfile: str = None, err_logfile: str = None):
     super().__init__(
       image=image,
@@ -48,6 +48,7 @@ class ProteinMPNNContainer(BaseContainer):
     # Setting ProteinMPNN other
     self.sampling_temp = sampling_temp
     self.backbone_noise = backbone_noise
+    self.soluble_model = use_soluble_model
     self.backbones = backbones  # TODO: make PMPNN uses only given backbones
     self.batch_size = batch_size
     self.out_logfile = out_logfile
@@ -95,6 +96,7 @@ class ProteinMPNNContainer(BaseContainer):
                         f'--num_seq_per_target {self.seqs_per_target} '
                         f'--sampling_temp {self.sampling_temp} '
                         f'--backbone_noise {self.backbone_noise} '
+                        f'{"--use_soluble_model " if self.soluble_model else ""}'
                         f'--batch_size {self.batch_size}')
     # Returning the commands
     return [create_cmd, parse_cmd, assign_cmd, make_fixed_dict_cmd, protein_mpnn_cmd,

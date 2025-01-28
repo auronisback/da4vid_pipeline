@@ -41,7 +41,7 @@ class ColabFoldStepTest(unittest.TestCase):
       config=ColabFoldStep.ColabFoldConfig(model_name='alphafold2', num_models=3),
     )
     try:
-      res_set = step.execute(sample_set)
+      res_set = step._execute(sample_set)
       for sample in res_set.samples():
         for sequence in sample.sequences():
           self.assertIsNotNone(sequence.get_fold_for_model('alphafold2'))
