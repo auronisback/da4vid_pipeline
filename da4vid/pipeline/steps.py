@@ -30,7 +30,7 @@ class PipelineStep(abc.ABC):
                pre_step_fn: List[Callable[[T, Any], None]] | Callable[[T, Any], None] = None,
                post_step_fn: List[Callable[[T, Any], None]] | Callable[[T, Any], None] = None,
                failed_step_fn: List[Callable[[T, PipelineException, Any], None]] |
-                               Callable[[T, PipelineException, Any], None] = None,
+               Callable[[T, PipelineException, Any], None] = None,
                **callable_kwargs):
     """
     Creates an abstract step, specifying its name, its optional parent, the folder in
@@ -91,17 +91,7 @@ class PipelineStep(abc.ABC):
     :param sample_set: The set of samples on which execute the method
     :return: Anything useful the concrete method wishes to return
     """
-    try:
-      for fn in self.__pre_step_fn:
-        fn(self, **self.__callable_kwargs)
-      result_set = self._execute(sample_set)
-      for fn in self.__post_step_fn:
-        fn(self, **self.__callable_kwargs)
-      return result_set
-    except PipelineException as e:
-      for fn in self.__failed_step_fn:
-        fn(self, e, **self.__callable_kwargs)
-      raise e
+    pass
 
   def resume(self, sample_set) -> SampleSet:
     """
@@ -212,6 +202,14 @@ class PipelineStep(abc.ABC):
   def __register_fn(registered_fn, new_fn):
     return registered_fn + (new_fn if isinstance(new_fn, List) else [new_fn])
 
+  def full_name(self) -> str:
+    """
+    Returns the fully-qualified name of the concrete step, including the whole
+    path from its ancestors in the pipeline tree, dot-separated.
+    :return: The fully-qualified step name
+    """
+    return ((self.parent.full_name() + '.') if self.parent else '') + self.name
+
 
 class CompositeStep(PipelineStep):
   def __init__(self, steps: List[PipelineStep] = None, **kwargs):
@@ -249,7 +247,7 @@ class CompositeStep(PipelineStep):
     :return: The sample set obtained by performing all steps sequentially
     """
     for step in self.steps:
-      sample_set = step._execute(sample_set)
+      sample_set = step.execute(sample_set)
     return sample_set
 
   def input_folder(self) -> str:
@@ -276,7 +274,7 @@ class CompositeStep(PipelineStep):
 
   def _resume(self, sample_set: SampleSet) -> SampleSet:
     for step in self.steps:
-      sample_set = step._resume(sample_set)
+      sample_set = step.resume(sample_set)
     return sample_set
 
 
@@ -285,7 +283,7 @@ class PipelineRootStep(CompositeStep):
   Abstracts the root element of the pipeline.
   """
 
-  def __init__(self, name: str, antigen: Sample, epitope: Epitope, folder: str):
+  def __init__(self, name: str, antigen: Sample, epitope: Epitope, folder: str, **kwargs):
     """
     Defines the root step of the pipeline, a composite step which includes every
     other step.
@@ -299,7 +297,7 @@ class PipelineRootStep(CompositeStep):
       raise ValueError(f'Root pipeline folder needed')
     if os.path.isfile(folder):
       raise FileExistsError(f'Root folder is a regular file: {self.folder}')
-    super().__init__(name=name, parent=None, folder=folder)
+    super().__init__(name=name, parent=None, folder=folder, **kwargs)
     self.antigen = antigen
     self.epitope = epitope
 
