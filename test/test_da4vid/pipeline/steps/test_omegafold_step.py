@@ -45,7 +45,7 @@ class OmegaFoldStepTest(unittest.TestCase):
       client=self.client,
       gpu_manager=self.gpu_manager
     )
-    sample_set = of_step._execute(sample_set)
+    sample_set = of_step.execute(sample_set)
     output_folder = of_step.output_folder()
     pdb_list = [d for d in os.listdir(output_folder)
                 if os.path.isdir(os.path.join(output_folder, d))]
@@ -77,7 +77,7 @@ class OmegaFoldStepTest(unittest.TestCase):
       client=self.client,
       gpu_manager=self.gpu_manager
     )
-    sample_set = of_step._execute(sample_set)
+    sample_set = of_step.execute(sample_set)
     self.__check_multiple_sequences(of_step, sample_set)
 
   def test_omegafold_resume_step(self):
@@ -98,7 +98,7 @@ class OmegaFoldStepTest(unittest.TestCase):
       client=self.client,
       gpu_manager=self.gpu_manager
     )
-    sample_set = of_step._resume(sample_set)
+    sample_set = of_step.resume(sample_set)
     self.__check_multiple_sequences(of_step, sample_set)
 
   def __check_multiple_sequences(self, step, sample_set):

@@ -29,7 +29,6 @@ def read_fasta(fasta_path: str, chain_separator: chr = ':') -> List[Protein]:
       proteins.append(Protein(name=title, filename=fasta_path,
                               chains=[Chain('A', residues=Residues.from_sequence(sequence))]))
       # TODO: add support for multiple chains with specified separator
-      # TODO: add test cases
       title = f.readline()
     return proteins
 

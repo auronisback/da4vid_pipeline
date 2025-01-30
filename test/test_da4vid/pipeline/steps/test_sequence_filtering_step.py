@@ -14,6 +14,7 @@ class SequenceFilteringStepTest(unittest.TestCase):
     self.backbones_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'sequence_filtering_test', 'backbones')
     self.folds_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'sequence_filtering_test', 'folds')
     self.folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'sequence_filtering_test', 'step_folder')
+    self.resume_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'sequence_filtering_test', 'resume_folder')
 
   def tearDown(self):
     shutil.rmtree(self.folder, ignore_errors=True)
@@ -27,7 +28,24 @@ class SequenceFilteringStepTest(unittest.TestCase):
       model='omegafold',
       plddt_threshold=25,
       average_cutoff=3
-    )._execute(sample_set)
+    ).execute(sample_set)
+    self.assertEqual(9, len(filtered_set.samples()))
+    for sample in filtered_set.samples():
+      self.assertIsInstance(sample, Fold)
+      self.assertTrue(sample.protein.props.has_key('omegafold.plddt'))
+      self.assertGreaterEqual(sample.metrics.get_metric('plddt'), 25)
+      self.assertEqual(sample.protein.props.get_value('omegafold.plddt'), sample.metrics.get_metric('plddt'))
+
+  def test_resume_sequence_filtering_step(self):
+    sample_set = sample_set_from_folders(self.backbones_folder, self.folds_folder,
+                                         model='omegafold', b_fact_prop='plddt')
+    filtered_set = SequenceFilteringStep(
+      name='seq_filtering_test',
+      folder=self.folder,
+      model='omegafold',
+      plddt_threshold=25,
+      average_cutoff=3
+    ).resume(sample_set)
     self.assertEqual(9, len(filtered_set.samples()))
     for sample in filtered_set.samples():
       self.assertIsInstance(sample, Fold)

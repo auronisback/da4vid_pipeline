@@ -226,3 +226,16 @@ class SampleSet:
     :return: The list of all sequence objects related to samples
     """
     return [seq for sample in self.samples() for seq in sample.sequences()]
+
+  def get_sequence_by_name(self, name: str) -> Sequence | None:
+    """
+    Gets a sequence in this sample set with the given name, if it exists.
+    :param name: The name of the sequence to search for
+    :return: The sequence with the given name, or None if no sequence
+             in this set has the provided name
+    """
+    for sample in self.__samples.values():
+      for sequence in sample.sequences():
+        if sequence.name == name:
+          return sequence
+    return None

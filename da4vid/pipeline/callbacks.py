@@ -20,7 +20,8 @@ class ProgressSaver:
     self.progression_file = progression_file
     # Creating the progression file if not exists
     if not os.path.isfile(progression_file):
-      open(progression_file, 'w')
+      f = open(progression_file, 'w')
+      f.close()
 
   def save_completed_step(self, step: PipelineStep) -> None:
     """
@@ -28,7 +29,6 @@ class ProgressSaver:
     been created.
     :param step: The step which has been completed
     """
-    print(f'Saving {step.full_name()}')
     with open(self.progression_file, 'a') as f:
       f.write(f'{step.full_name()}\n')
       f.flush()

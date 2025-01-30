@@ -24,7 +24,29 @@ class BackboneFilteringStepTest(unittest.TestCase):
       rog_cutoff=3,
       rog_percentage=False,
       folder=self.step_folder
-    )._execute(sample_set)
+    ).execute(sample_set)
+    self.assertEqual(17, len(filtered_set.samples()))
+    counts = {}
+    for sample in filtered_set.samples():
+      self.assertTrue(os.path.isfile(sample.filepath))
+      self.assertTrue(os.path.isfile(sample.protein.filename))
+      ss = sample.protein.get_prop('ss')
+      if ss not in counts.keys():
+        counts[ss] = []
+      counts[ss].append(sample)
+    for ss in counts.keys():
+      self.assertGreaterEqual(ss, 4)
+      self.assertLessEqual(len(counts[ss]), 3)
+
+  def test_resume_filtering(self):
+    sample_set = sample_set_from_backbones(self.backbone_folder)
+    filtered_set = BackboneFilteringStep(
+      name='bb_filter_test',
+      ss_threshold=4,
+      rog_cutoff=3,
+      rog_percentage=False,
+      folder=self.step_folder
+    ).resume(sample_set)
     self.assertEqual(17, len(filtered_set.samples()))
     counts = {}
     for sample in filtered_set.samples():

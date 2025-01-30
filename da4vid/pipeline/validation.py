@@ -264,7 +264,7 @@ class ColabFoldStep(DockerStep):
 
   def _resume(self, sample_set: SampleSet) -> SampleSet:
     # Just adding predictions to sample set
-    self.__add_predicted_folds(sample_set)
+    self.__retrieve_predicted_folds(sample_set)
     return sample_set
 
   def __create_container(self, input_dir: str) -> ColabFoldContainer:
@@ -308,11 +308,21 @@ class ColabFoldStep(DockerStep):
         else:
           self.__process_sample_folds(sample, path)
 
+  def __retrieve_predicted_folds(self, sample_set: SampleSet) -> None:
+    for f in os.listdir(self.output_dir):
+      if f.endswith('.pdb'):
+        seq_name = f[:-4]
+        sequence = sample_set.get_sequence_by_name(seq_name)
+        if not sequence:
+          logging.warning(f'Sequence not found for file {f}')
+        else:
+          sequence.add_folds(self.__extract_fold(os.path.join(self.output_dir, f), sequence))
+
   def __process_sample_folds(self, sample: Sample, folds_folder: str) -> None:
     print(f'Processing folder: {folds_folder}')
     for f in os.listdir(folds_folder):
       filepath = os.path.join(folds_folder, f)
-      if "rank_001" not in f:
+      if "rank_001" not in f or not f.endswith('.pdb'):
         self.__remove_unused_entry(filepath)
       else:  # Best ranked
         self.__add_fold_to_sample(filepath, sample)
@@ -320,17 +330,16 @@ class ColabFoldStep(DockerStep):
     shutil.rmtree(folds_folder)
 
   def __add_fold_to_sample(self, filepath: str, sample: Sample):
-    if filepath.endswith('.pdb'):
-      f = os.path.basename(filepath)
-      sequence_name = '_'.join(f.split('_')[:-8])  # AF2 outputs puts 8 '_' separated fields
-      new_path = os.path.join(self.output_dir, f'{sequence_name}.pdb')
-      shutil.move(filepath, new_path)
-      sequence = sample.get_sequence_by_name(sequence_name)
-      if not sequence:
-        logging.warning(f'No sequence found for {sequence_name}')
-      else:
-        fold = self.__extract_fold(new_path, sequence)
-        sequence.add_folds(fold)
+    f = os.path.basename(filepath)
+    sequence_name = '_'.join(f.split('_')[:-8])  # AF2 outputs puts 8 '_' separated fields
+    new_path = os.path.join(self.output_dir, f'{sequence_name}.pdb')
+    shutil.move(filepath, new_path)
+    sequence = sample.get_sequence_by_name(sequence_name)
+    if not sequence:
+      logging.warning(f'No sequence found for {sequence_name}')
+    else:
+      fold = self.__extract_fold(new_path, sequence)
+      sequence.add_folds(fold)
 
   @staticmethod
   def __remove_unused_entry(filepath: str):

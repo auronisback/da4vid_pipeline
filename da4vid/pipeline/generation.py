@@ -10,7 +10,7 @@ from da4vid.docker.rfdiffusion import RFdiffusionContainer, RFdiffusionPotential
 from da4vid.filters import cluster_by_ss, filter_by_rog
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_pdb_folder, read_protein_mpnn_fasta
-from da4vid.io.fasta_io import write_fasta
+from da4vid.io.fasta_io import write_fasta, read_fasta
 from da4vid.model.proteins import Protein, Epitope
 from da4vid.model.samples import SampleSet, Sample, Sequence
 from da4vid.pipeline.steps import PipelineStep, DockerStep, PipelineException
@@ -331,26 +331,32 @@ class ProteinMPNNStep(DockerStep):
     for sample in tqdm(sample_set.samples(), file=sys.stdout):
       fasta_filepath = '.'.join(os.path.basename(sample.filepath).split('.')[:-1]) + '.fa'
       proteins = self.__extract_proteins_from_fasta(os.path.join(
-        self.output_dir, fasta_filepath))
+        self.output_dir, fasta_filepath), from_pmpnn=False)
       for protein in proteins:
         protein.add_prop('protein_mpnn', proteins[0].get_prop('protein_mpnn'))
         sample.add_sequences([Sequence(name=s.name, filepath=fasta_filepath, protein=s, sample=sample)
                               for s in proteins])
     return sample_set
 
-  def __extract_proteins_from_fasta(self, fasta_path: str) -> List[Protein]:
+  def __extract_proteins_from_fasta(self, fasta_path: str, from_pmpnn: bool = True) -> List[Protein]:
     """
     Recovers the protein from FASTA sequences produced by this step.
     :param fasta_path: The path on which extract FASTA sequences
     :return: The list of generated proteins
     """
-    proteins = read_protein_mpnn_fasta(fasta_path)
+    if from_pmpnn:
+      proteins = read_protein_mpnn_fasta(fasta_path)
+    else:
+      proteins = read_fasta(fasta_path)
     if not proteins:
       return proteins
-    # The first original protein will be the name of this sample
-    sample_name = proteins[0].name
-    # Excluding original protein sequence (useless to predict it back, especially if it was only backbone)
-    proteins = proteins[1:]
+    if from_pmpnn:
+      # The first original protein will be the name of this sample
+      sample_name = proteins[0].name
+      # Excluding original protein sequence (useless to predict it back, especially if it was only backbone)
+      proteins = proteins[1:]
+    else:
+      sample_name = '.'.join(os.path.basename(fasta_path).split('.')[:-1])
     output_fasta = os.path.join(self.output_dir, f'{sample_name}.fa')
     for protein in proteins:
       protein.filename = output_fasta

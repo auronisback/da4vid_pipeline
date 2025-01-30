@@ -12,10 +12,14 @@ from test.cfg import RESOURCES_ROOT
 class ProgressSaverTest(unittest.TestCase):
 
   def setUp(self):
+    self.existing_progress_file = os.path.join(RESOURCES_ROOT, 'callbacks_test', 'existing.progress')
     self.antigen_path = os.path.join(RESOURCES_ROOT, 'callbacks_test', 'antigen.pdb')
     self.progress_file = os.path.join(RESOURCES_ROOT, 'callbacks_test', 'pipeline.progress')
 
   def tearDown(self):
+    with open(self.existing_progress_file, 'w') as f:
+      f.write(f'root.some_previous_step\n')
+      f.flush()
     if os.path.exists(self.progress_file):
       os.unlink(self.progress_file)
 
@@ -65,4 +69,12 @@ class ProgressSaverTest(unittest.TestCase):
       self.assertEqual(pipeline.full_name(), f.readline().strip())
 
   def test_progress_saver_on_existing_file(self):
-    pass
+    saver = ProgressSaver(self.existing_progress_file)
+    pipeline = self.__create_dummy_pipeline(saver)
+    pipeline.resume(None)
+    with open(self.existing_progress_file) as f:
+      self.assertEqual('root.some_previous_step', f.readline().strip())
+      self.assertEqual(pipeline.steps[0].full_name(), f.readline().strip())
+      self.assertEqual(pipeline.steps[1].full_name(), f.readline().strip())
+      self.assertEqual(pipeline.steps[2].full_name(), f.readline().strip())
+      self.assertEqual(pipeline.full_name(), f.readline().strip())
