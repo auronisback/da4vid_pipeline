@@ -33,7 +33,7 @@ def execute(configuration, json: bool, show_pipeline: bool) -> None:
     pipeline = PipelineCreator().from_yml(configuration)
   if show_pipeline:
     PipelinePrinter().print(pipeline)
-  click.echo('executing')
+  pipeline.execute()
 
 
 @click.command(name='resume', short_help='Resumes a previously ran pipeline.')

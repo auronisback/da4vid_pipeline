@@ -322,7 +322,7 @@ class ProteinMPNNStep(DockerStep):
       for protein in proteins:
         protein.add_prop('protein_mpnn', proteins[0].get_prop('protein_mpnn'))
       sample.add_sequences(
-        [Sequence(name=s.name, filepath=fasta_filepath, protein=s, sample=sample) for s in proteins])
+        [Sequence(name=p.name, filepath=p.filename, protein=p, sample=sample) for p in proteins])
     # Removing sequences directory after copy
     shutil.rmtree(self.__sequences_output_dir())
     return sample_set

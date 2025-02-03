@@ -1,7 +1,7 @@
 import concurrent.futures
 import os
 import threading
-from typing import List, Tuple
+from typing import List
 
 import docker
 
@@ -44,6 +44,7 @@ class ColabFoldContainer(BaseContainer):
     if model_name not in ColabFoldContainer.MODEL_NAMES:
       raise ValueError(f'given model "{model_name}" is invalid '
                        f'(choices: {", ".join(ColabFoldContainer.MODEL_NAMES)})')
+    # TODO: IMPORTANT: use the right MSA
     self.input_dir = input_dir
     self.output_dir = output_dir
     self.model_name = model_name
@@ -112,21 +113,29 @@ class ColabFoldContainer(BaseContainer):
     return res
 
   def __create_msa_fasta_command(self, f: str) -> str:
-    input_fasta, _ = self.__get_input_and_output_folder(f)
+    input_fasta = self.__get_input_fasta(f)
     tmp_fasta = self.__get_tmp_msa_fasta_path(f)
     return f'/bin/bash -c "/usr/bin/head -n 2 {input_fasta} > {tmp_fasta}"'
 
   def __msa_only_command(self, f: str) -> str:
-    _, output_folder = self.__get_input_and_output_folder(f)
+    output_folder = self.__get_output_folder_for_fasta(f)
     tmp_fasta = self.__get_tmp_msa_fasta_path(f)
     return f'{self.__COLABFOLD_BATCH_COMMAND} --msa-only {tmp_fasta} {output_folder}'
 
   def __copy_msa_command(self, f: str) -> str:
-    input_fasta, output_folder = self.__get_input_and_output_folder(f)
-    return f'python {self.__COPY_MSA_SCRIPT} {input_fasta} {output_folder} 1'
+    input_fasta = self.__get_input_fasta(f)
+    output_folder = self.__get_output_folder_for_fasta(f)
+    # Extracting MSA index: searching an env folder
+    msa_index = self.__get_msa_index(f)
+    return f'python {self.__COPY_MSA_SCRIPT} {input_fasta} {output_folder} {msa_index}'
+
+  def __get_msa_index(self, fasta_basename: str) -> int:
+    with open(os.path.join(self.input_dir, fasta_basename), 'r') as f:
+      return int(f.readline().strip().split('_')[-1])
 
   def __prediction_command(self, f: str) -> str:
-    input_fasta, output_folder = self.__get_input_and_output_folder(f)
+    input_fasta = self.__get_input_fasta(f)
+    output_folder = self.__get_output_folder_for_fasta(f)
     return (f'{self.__COLABFOLD_BATCH_COMMAND} '
             f'--data {self.MODELS_FOLDER} '
             f'--model-type {self.model_name} '
@@ -139,8 +148,11 @@ class ColabFoldContainer(BaseContainer):
   def __remove_msa_fasta_command(self, f: str) -> str:
     return f'/usr/bin/rm {self.__get_tmp_msa_fasta_path(f)}'
 
-  def __get_input_and_output_folder(self, f: str) -> Tuple[str, str]:
-    return os.path.join(self.INPUT_DIR, f), os.path.join(self.OUTPUT_DIR, '.'.join(f.split('.')[:-1]))
+  def __get_input_fasta(self, f: str) -> str:
+    return os.path.join(self.INPUT_DIR, f)
+
+  def __get_output_folder_for_fasta(self, f: str) -> str:
+    return os.path.join(self.OUTPUT_DIR, '.'.join(f.split('.')[:-1]))
 
   def __get_tmp_msa_fasta_path(self, f: str) -> str:
     return os.path.join(self.INPUT_DIR, f'msa_{f}')

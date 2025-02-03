@@ -69,6 +69,8 @@ class Sequence:
     if not isinstance(folds, list):
       folds = [folds]
     self.__folds |= {f.model: f for f in folds}
+    for fold in folds:  # Updating sequence in folds
+      fold.sequence = self
 
   def sequence_to_str(self) -> str:
     """
@@ -113,6 +115,8 @@ class Sample:
     if isinstance(sequences, Sequence):
       sequences = [sequences]
     self.__sequences |= {s.name: s for s in sequences}
+    for sequence in sequences:  # Updating sequences' sample
+      sequence.sample = self
 
   def sequences(self) -> List[Sequence]:
     """

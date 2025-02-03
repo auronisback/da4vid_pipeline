@@ -20,12 +20,12 @@ def evaluate_plddt(proteins: Union[Protein, List[Protein]], plddt_prop: str = 'p
   """
   if isinstance(proteins, Protein):
     proteins = [proteins]
-  # TODO: make this method return plain floating point
   proteins_plddt = []
   for protein in proteins:
     if protein.has_prop(plddt_prop):
       prev_plddt = protein.get_prop(plddt_prop)
-      proteins_plddt.append(prev_plddt if isinstance(prev_plddt, torch.Tensor) else torch.tensor(prev_plddt))
+      proteins_plddt.append(prev_plddt.to(device) if isinstance(prev_plddt, torch.Tensor)
+                            else torch.tensor(prev_plddt))
     else:
       resi_plddt = []
       for chain in protein.chains:

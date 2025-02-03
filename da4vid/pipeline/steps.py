@@ -63,7 +63,7 @@ class PipelineStep(abc.ABC):
       failed_step_fn if isinstance(failed_step_fn, List) else [failed_step_fn])
     self.__callable_kwargs = callable_kwargs | {}
 
-  def execute(self, sample_set: SampleSet) -> SampleSet:
+  def execute(self, sample_set: SampleSet | None) -> SampleSet:
     """
     Executes the step. It will execute any pre-step functions registered in the step,
     and will then execute the actual step logic. If the step ends successfully,
@@ -85,7 +85,7 @@ class PipelineStep(abc.ABC):
       raise e
 
   @abc.abstractmethod
-  def _execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet | None) -> SampleSet:
     """
     Abstract method executing the concrete step.
     :param sample_set: The set of samples on which execute the method
@@ -93,7 +93,7 @@ class PipelineStep(abc.ABC):
     """
     pass
 
-  def resume(self, sample_set) -> SampleSet:
+  def resume(self, sample_set: SampleSet | None) -> SampleSet:
     """
     Resumes the last execution of this step. Pre-, post- and failure-step callbacks will be
     fired according to the logic in the *execution* method.
@@ -113,7 +113,7 @@ class PipelineStep(abc.ABC):
       raise e
 
   @abc.abstractmethod
-  def _resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet | None) -> SampleSet:
     """
     Method used to recover data from a previously executed step. This method
     will be called when a pipeline evaluation has been interrupted for some
@@ -241,7 +241,7 @@ class CompositeStep(PipelineStep):
     for step in self.steps:
       step.parent = self
 
-  def _execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet | None) -> SampleSet:
     """
     Executes all steps in the collection.
     :return: The sample set obtained by performing all steps sequentially
@@ -272,7 +272,7 @@ class CompositeStep(PipelineStep):
       return self.steps[-1].output_folder()
     raise AttributeError('No steps set in this composite step')
 
-  def _resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet | None) -> SampleSet:
     for step in self.steps:
       sample_set = step.resume(sample_set)
     return sample_set
@@ -301,7 +301,10 @@ class PipelineRootStep(CompositeStep):
     self.antigen = antigen
     self.epitope = epitope
 
-  def _execute(self, sample_set: SampleSet = None) -> SampleSet:
+  def execute(self, sample_set: SampleSet | None = None) -> SampleSet:
+    return super().execute(sample_set)
+
+  def _execute(self, sample_set: SampleSet | None) -> SampleSet:
     """
     Executes the pipeline. If sample set is not given, it will be automatically
     inferred by the antigen and the epitope parameters.
@@ -354,10 +357,10 @@ class FoldCollectionStep(PipelineStep):
     super().__init__(name, **kwargs)
     self.model = model
 
-  def _execute(self, sample_set: SampleSet) -> SampleSet:
+  def _execute(self, sample_set: SampleSet | None) -> SampleSet:
     return sample_set.folded_sample_set(self.model)
 
-  def _resume(self, sample_set: SampleSet) -> SampleSet:
+  def _resume(self, sample_set: SampleSet | None) -> SampleSet:
     # It is equivalent to the execute step
     return self._execute(sample_set)
 

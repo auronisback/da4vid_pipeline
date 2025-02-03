@@ -138,7 +138,7 @@ class SequenceFilteringStep(PipelineStep):
     :param model: The model used to retrieve pLDDT predictions
     :param plddt_threshold: The threshold on samples average pLDDT values
     :param average_cutoff: The number of samples used to evaluate average pLDDT. If None, all
-                       samples for the backbone will be used
+                           samples for the backbone will be used
     :param rog_cutoff: The cutoff for RoG filtering. If None, no cutoff will be applied
     :param max_samples: The maximum number of samples to retain for each original protein. If None, no
                         limit to the number of samples will be used. Defaults to None
@@ -168,9 +168,12 @@ class SequenceFilteringStep(PipelineStep):
       if filtered_folds and self.rog_cutoff is not None:
         filtered_folds = self.__filter_by_rog(filtered_folds)
       if filtered_folds:
-        filtered_set.add_samples(filtered_folds)
-    print(f'Filtered {len(sample_set.samples())} folds for '
-          f'a total of {len(filtered_set.samples())} samples')
+        new_sample = Sample(sample.name, sample.filepath, sample.protein)
+        new_sample.add_sequences([fold.sequence for fold in filtered_folds])
+        filtered_set.add_samples(new_sample)
+    print(f'Filtered {len(filtered_set.samples())} samples for a total of '
+          f'{len([fold for sample in filtered_set.samples() for fold in sample.get_folds_for_model(self.model)])} '
+          f'folds')
     self.__save_filtered_set(filtered_set)
     return filtered_set
 
@@ -181,16 +184,17 @@ class SequenceFilteringStep(PipelineStep):
     return self._execute(sample_set)
 
   def __filter_by_plddt(self, folds: List[Fold]) -> List[Fold]:
-    if not folds:
-      return []
-    plddts = evaluate_plddt([f.protein for f in folds], f'{self.model}.plddt', self.device)
-    mean_plddt = torch.mean(plddts)
-    if mean_plddt >= self.plddt_threshold:
+    if folds:
+      plddts = evaluate_plddt([f.protein for f in folds], f'{self.model}.plddt', self.device)
       # Adding pLDDT metric to fold
       for plddt, fold in zip(plddts, folds):
         fold.metrics.add_metric('plddt', plddt)
       folds.sort(key=lambda f: f.metrics.get_metric('plddt'), reverse=True)
-      return folds[:self.average_cutoff if self.average_cutoff else len(folds)]
+      folds_for_avg = folds[:self.average_cutoff if self.average_cutoff else len(folds)]
+      mean_plddt = torch.mean(torch.tensor([fold.metrics.get_metric('plddt') for fold in folds_for_avg]))
+      if mean_plddt >= self.plddt_threshold:
+        # Sample mean pLDDT is greater than threshold, retaining folds better than average
+        return [fold for fold in folds if fold.metrics.get_metric('plddt') > self.plddt_threshold]
     return []
 
   def __filter_by_rog(self, folds: List[Fold]) -> List[Fold]:
@@ -204,7 +208,8 @@ class SequenceFilteringStep(PipelineStep):
   def __save_filtered_set(self, filtered_set: SampleSet) -> None:
     os.makedirs(self.output_dir, exist_ok=True)
     for sample in filtered_set.samples():
-      shutil.copy2(sample.filepath, self.output_dir)
+      for fold in sample.get_folds_for_model(self.model):
+        shutil.copy2(fold.filepath, self.output_dir)
 
   def input_folder(self) -> str:
     # No input folder required

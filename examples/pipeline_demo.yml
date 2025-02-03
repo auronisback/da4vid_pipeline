@@ -28,7 +28,7 @@ demo pipeline:
                     -   sequence_filtering:
                             name: 'omegafold_filtering'
                             model: 'omegafold'
-                            plddt_threshold: 55
+                            plddt_threshold: 40
                             average_cutoff: 20
                             rog_cutoff: 10
                             max_samples: 20
@@ -39,9 +39,11 @@ demo pipeline:
                     -   sequence_filtering:
                             name: 'colabfold_filtering'
                             model: 'colabfold'
-                            plddt_threshold: 60
+                            plddt_threshold: 40
                             average_cutoff: 10
                             max_samples: 10
+                    -   fold_collection:
+                            model: 'colabfold'
     -   iteration 2:
             steps:
             -   generation:
@@ -59,7 +61,7 @@ demo pipeline:
                     -   sequence_filtering:
                             name: 'omegafold_filtering'
                             model: 'omegafold'
-                            plddt_threshold: 70
+                            plddt_threshold: 50
                             average_cutoff: 10
                             rog_cutoff: 10
                             max_samples: 20
@@ -70,6 +72,8 @@ demo pipeline:
                     -   sequence_filtering:
                             name: 'colabfold_filtering'
                             model: 'colabfold'
-                            plddt_threshold: 70
+                            plddt_threshold: 50
                             average_cutoff: 10
                             max_samples: 10
+                    -   fold_collection:
+                            model: 'colabfold'
