@@ -1,6 +1,6 @@
 import os.path
 
-from da4vid.pipeline.steps import PipelineStep
+from da4vid.pipeline.steps import PipelineStep, CompositeStep
 
 
 class ProgressSaver:
@@ -23,11 +23,23 @@ class ProgressSaver:
       f = open(progression_file, 'w')
       f.close()
 
-  def save_completed_step(self, step: PipelineStep) -> None:
+  def register(self, step: PipelineStep) -> None:
+    """
+    Register callbacks in this object to the given step. If the step is
+    composite, then callbacks will be registered to all of its sub-steps.
+    :param step: A pipeline step
+    """
+    step.register_post_step_fn(self.save_completed_step)
+    if isinstance(step, CompositeStep):
+      for sub_step in step.steps:
+        self.register(sub_step)
+
+  def save_completed_step(self, step: PipelineStep, **kwargs) -> None:
     """
     Saves the step completion in the file specified when this object has
     been created.
     :param step: The step which has been completed
+    :param kwargs: Ignored
     """
     with open(self.progression_file, 'a') as f:
       f.write(f'{step.full_name()}\n')

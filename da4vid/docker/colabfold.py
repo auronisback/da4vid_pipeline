@@ -67,6 +67,8 @@ class ColabFoldContainer(BaseContainer):
     return res
 
   def __create_and_execute_container(self, fasta_basenames: List[str]) -> bool:
+    if not fasta_basenames:  # Nothing to do if no FASTA file has to be evaluated
+      return True
     container, device = super()._create_container()
     print(f'[{threading.current_thread().name}] Running predictions for {fasta_basenames} on {device.name}')
     res = self.__run_on_fasta_list(fasta_basenames, container)

@@ -51,6 +51,8 @@ class OmegaFoldContainer(BaseContainer):
     return res
 
   def __create_and_run_container(self, fasta_basenames) -> bool:
+    if not fasta_basenames:  # Nothing to do if no fastas should be executed
+      return True
     container, device = super()._create_container()
     print(f'[{threading.current_thread().name}] Running {fasta_basenames} on device {device.name}')
     # Run commands in the container

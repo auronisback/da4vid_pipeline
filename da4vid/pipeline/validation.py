@@ -70,7 +70,7 @@ class OmegaFoldStep(DockerStep):
     # Starting OmegaFold
     print('Running OmegaFold for structure prediction')
     print(f' - input folder: {self.input_dir}')
-    print(f' - input folder: {self.output_dir}')
+    print(f' - output folder: {self.output_dir}')
     print(f' - model weights: {self.config.model_weights}')
     print(f' - num_recycles: {self.config.num_recycles}')
     if not self.container.run():

@@ -38,12 +38,12 @@ demo pipeline:
                             num_models: 5
                     -   sequence_filtering:
                             name: 'colabfold_filtering'
-                            model: 'colabfold'
+                            model: 'alphafold2'
                             plddt_threshold: 40
                             average_cutoff: 10
                             max_samples: 10
                     -   fold_collection:
-                            model: 'colabfold'
+                            model: 'alphafold2'
     -   iteration 2:
             steps:
             -   generation:
@@ -71,9 +71,9 @@ demo pipeline:
                             num_models: 5
                     -   sequence_filtering:
                             name: 'colabfold_filtering'
-                            model: 'colabfold'
+                            model: 'alphafold2'
                             plddt_threshold: 50
                             average_cutoff: 10
                             max_samples: 10
                     -   fold_collection:
-                            model: 'colabfold'
+                            model: 'alphafold2'

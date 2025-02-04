@@ -148,7 +148,8 @@ class Sample:
     self.__sequences = {s.name: s for s in unique}
 
   def get_folds_for_model(self, model: str) -> List['Fold']:
-    return [s.get_fold_for_model(model) for s in self.__sequences.values()]
+    return [s.get_fold_for_model(model) for s in self.__sequences.values()
+            if s.get_fold_for_model(model) is not None]
 
 
 class Fold(Sample):
@@ -218,10 +219,7 @@ class SampleSet:
     """
     new_set = SampleSet()
     for sample in self.__samples.values():
-      for sequence in sample.sequences():
-        fold = sequence.get_fold_for_model(model)
-        if fold is not None:
-          new_set.add_samples(fold)
+      new_set.add_samples(sample.get_folds_for_model(model))
     return new_set
 
   def sequences(self) -> List[Sequence]:

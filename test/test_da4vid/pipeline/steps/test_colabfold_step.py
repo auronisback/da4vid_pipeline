@@ -80,8 +80,6 @@ class ColabFoldStepTest(unittest.TestCase):
     expected_samples = ['sample_1000_1', 'sample_1000_2',
                         'sample_1001_1', 'sample_1001_2', 'sample_1001_3']
     self.assertEqual(5, len(folded_samples))
-    self.assertIn(folded_samples[0].name, expected_samples)
-    self.assertIn(folded_samples[1].name, expected_samples)
-    self.assertIn(folded_samples[2].name, expected_samples)
-    self.assertIn(folded_samples[3].name, expected_samples)
-    self.assertIn(folded_samples[4].name, expected_samples)
+    for fold in folded_samples:
+      self.assertIn(fold.name, expected_samples)
+      self.assertEqual('alphafold2', fold.model)
