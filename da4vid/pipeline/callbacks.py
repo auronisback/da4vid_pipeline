@@ -3,7 +3,7 @@ import os.path
 from da4vid.pipeline.steps import PipelineStep, CompositeStep
 
 
-class ProgressSaver:
+class ProgressManager:
   """
   Class used to save progresses in pipeline steps. This class provides methods
   intended to be used as post- and failure callbacks for pipeline steps, in order
@@ -14,6 +14,7 @@ class ProgressSaver:
   """
 
   def __init__(self, progression_file: str):
+    self.progress = []
     # Checking that the progression file is not a directory
     if os.path.isdir(progression_file):
       raise FileExistsError(f'Progression file is a directory: {progression_file}')
@@ -22,6 +23,11 @@ class ProgressSaver:
     if not os.path.isfile(progression_file):
       f = open(progression_file, 'w')
       f.close()
+    else:
+      # Progress file already existing: loading progress
+      with open(progression_file) as f:
+        for line in f:
+          self.progress.append(line.strip())
 
   def register(self, step: PipelineStep) -> None:
     """
@@ -42,5 +48,10 @@ class ProgressSaver:
     :param kwargs: Ignored
     """
     with open(self.progression_file, 'a') as f:
-      f.write(f'{step.full_name()}\n')
+      step_name = step.full_name()
+      self.progress.append(step_name)
+      f.write(f'{step_name}\n')
       f.flush()
+
+  def has_been_completed(self, step: PipelineStep) -> bool:
+    return step.full_name() in self.progress

@@ -4,7 +4,7 @@ import unittest
 from da4vid.io import read_from_pdb
 from da4vid.model.proteins import Epitope
 from da4vid.model.samples import SampleSet, Sample
-from da4vid.pipeline.callbacks import ProgressSaver
+from da4vid.pipeline.callbacks import ProgressManager
 from da4vid.pipeline.steps import PipelineStep, PipelineRootStep
 from test.cfg import RESOURCES_ROOT
 
@@ -40,7 +40,7 @@ class ProgressSaverTest(unittest.TestCase):
     def input_folder(self) -> str:
       pass
 
-  def __create_dummy_pipeline(self, saver: ProgressSaver) -> PipelineRootStep:
+  def __create_dummy_pipeline(self, saver: ProgressManager) -> PipelineRootStep:
     antigen = Sample(
       name='DEMO',
       filepath=self.antigen_path,
@@ -55,10 +55,10 @@ class ProgressSaverTest(unittest.TestCase):
 
   def test_progress_saver_should_raise_error_if_invalid_file(self):
     with self.assertRaises(FileExistsError):
-      ProgressSaver(os.path.dirname(self.progress_file))
+      ProgressManager(os.path.dirname(self.progress_file))
 
   def test_progress_saver_on_file(self):
-    saver = ProgressSaver(self.progress_file)
+    saver = ProgressManager(self.progress_file)
     pipeline = self.__create_dummy_pipeline(saver)
     pipeline.execute(None)
     self.assertTrue(os.path.exists(self.progress_file))
@@ -69,7 +69,7 @@ class ProgressSaverTest(unittest.TestCase):
       self.assertEqual(pipeline.full_name(), f.readline().strip())
 
   def test_progress_saver_on_existing_file(self):
-    saver = ProgressSaver(self.existing_progress_file)
+    saver = ProgressManager(self.existing_progress_file)
     pipeline = self.__create_dummy_pipeline(saver)
     pipeline.resume(None)
     with open(self.existing_progress_file) as f:
