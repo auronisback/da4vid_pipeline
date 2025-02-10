@@ -7,7 +7,7 @@ import os.path
 import click
 
 from da4vid.model.samples import SampleSet
-from da4vid.pipeline.callbacks import ProgressManager
+from da4vid.pipeline.callbacks import ProgressManager, ElapsedTimeSaver
 from da4vid.pipeline.config import PipelineCreator, PipelinePrinter
 from da4vid.pipeline.steps import PipelineStep, PipelineRootStep, CompositeStep
 
@@ -19,13 +19,15 @@ def cli():
 
 @click.command(name='execute', short_help='Executes a DA4VID pipeline.')
 @click.argument('configuration', type=click.Path(exists=True, dir_okay=False, readable=True))
-@click.option('--json', '-j', help='Specifies that configuration files is in JSON format',
+@click.option('--json', '-j', help='Specifies that configuration files is in JSON format.',
               type=bool, default=False)
 @click.option('--show-pipeline', '-s', type=bool, help='Shows pipeline configuration before resuming.',
-              default=True)
+              default=True, is_flag=True)
 @click.option('--save-progress', '-p', type=click.Path(exists=False, dir_okay=False, writable=True),
-              help='Specify the file in which pipeline progress will be saved. Defaults to configuration name')
-def execute(configuration, json: bool, show_pipeline: bool, save_progress: str) -> None:
+              help='Specify the file in which pipeline progress will be saved. Defaults to configuration name.')
+@click.option('--save-time', '-t', type=bool, default=False, is_flag=True,
+              help='Specify if times for various pipeline steps should be saved, in CSV format.')
+def execute(configuration, json: bool, show_pipeline: bool, save_progress: str, save_time: bool) -> None:
   """
   Executes the DA4VID pipeline specified by a configuration file, in yml or json format.
   \f
@@ -36,6 +38,7 @@ def execute(configuration, json: bool, show_pipeline: bool, save_progress: str) 
   :param save_progress: File in which pipeline progress will be saved, in case of future resuming.
                         If not given, a progress file with the same name of the configuration in
                         the same folder will be used
+  :param save_time: Flag indicating if pipeline step execution times should be recorded
   """
   if json:
     raise NotImplementedError("JSON configurations have not been implemented yet! :'(")
@@ -44,9 +47,14 @@ def execute(configuration, json: bool, show_pipeline: bool, save_progress: str) 
     PipelinePrinter().print(pipeline)
   if save_progress is None:
     save_progress = __progress_file_from_configuration_path(configuration)
-  click.echo(f'Saving progress to {save_progress}')
   progress_saver = ProgressManager(save_progress)
   progress_saver.register(pipeline)
+  click.echo(f'Saving progress to {save_progress}')
+  if save_time:
+    time_file = __elapsed_time_from_configuration_path(configuration)
+    click.echo(f'Saving execution time to {time_file}')
+    time_saver = ElapsedTimeSaver(time_file)
+    time_saver.register(pipeline)
   pipeline.execute()
 
 
@@ -115,6 +123,11 @@ def show(configuration, json: bool) -> None:
 def __progress_file_from_configuration_path(configuration: str) -> str:
   return os.path.join(os.path.dirname(configuration),
                       '.'.join(configuration.split('.')[:-1]) + '.progress')
+
+
+def __elapsed_time_from_configuration_path(configuration: str) -> str:
+  return os.path.join(os.path.dirname(configuration),
+                      '.'.join(configuration.split('.')[:-1]) + '.time.csv')
 
 
 if __name__ == '__main__':

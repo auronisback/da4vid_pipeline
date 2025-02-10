@@ -480,6 +480,7 @@ class Epitope:
     self.start = start
     self.end = end
     self.protein = protein
+    self.__sequence = None  # Caches the sequence
     self.__check_chain_and_residues()
 
   def __check_chain_and_residues(self):
@@ -495,3 +496,15 @@ class Epitope:
 
   def __str__(self):
     return f'{self.chain}{self.start}-{self.end}'
+
+  def sequence(self) -> str | None:
+    """
+    Returns the one-letter code of all amino-acids in the epitope, if
+    the protein has been provided.
+    :return: The amino-acid sequence of all residues in the epitope, or
+             None if no protein has been linked to this epitope
+    """
+    if not self.__sequence:
+      if self.protein:
+        self.__sequence = self.protein.get_chain(self.chain).sequence()[self.start - 1: self.end]
+    return self.__sequence

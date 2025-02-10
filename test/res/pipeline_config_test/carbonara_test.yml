@@ -1,0 +1,19 @@
+simple pipeline:
+    folder: ../../res/pipeline_config_test/run
+    antigen: ../../res/pipeline_config_test/antigen.pdb
+    epitope: A21-30
+    steps:
+    -   rfdiffusion:
+            name: 'my_rfdiffusion'
+            num_designs: 2000
+            partial_T: 23
+            contacts_threshold: 5
+            rog_potential: 12
+    -   backbone_filtering:
+            ss_threshold: 5
+            rog_cutoff: 10
+    -   carbonara:
+            num_sequences: 100
+            imprint_ratio: .2
+            ignore_het_atm: 1
+            ignored_amino_acids: A C K Y

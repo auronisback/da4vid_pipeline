@@ -5,6 +5,7 @@ from typing import List
 
 from tqdm import tqdm
 
+from da4vid.docker.carbonara import CARBonAraContainer
 from da4vid.docker.pmpnn import ProteinMPNNContainer
 from da4vid.docker.rfdiffusion import RFdiffusionContainer, RFdiffusionPotentials, RFdiffusionContigMap
 from da4vid.filters import cluster_by_ss, filter_by_rog
@@ -375,3 +376,110 @@ class ProteinMPNNStep(DockerStep):
 
   def output_folder(self) -> str:
     return self.output_dir
+
+
+class CARBonAraStep(DockerStep):
+  class CARBonAraConfig:
+
+    def __init__(self, num_sequences: int, imprint_ratio: float = .5,
+                 sampling_method: str = CARBonAraContainer.SAMPLING_SAMPLED,
+                 ignored_amino_acids: List[str] | None = None, ignore_het_atm: bool = False,
+                 ignore_water: bool = False):
+      """
+      Creates an object storing the configuration of a CARBonAra step.
+      :param num_sequences: Number of sequences which are produced by CARBonAra for each PDB file
+      :param imprint_ratio: Ratio of positions which will be sampled using prior sequence information
+                            during the execution. 0 indicates that no prior information will be retained
+                            at all, while a value of 1 means that all positions will have prior information.
+                            Defaults to 0.5
+      :param sampling_method: Method used for sampling. Can be 'max' and 'sampled'. In the first case, the
+                              sampled AA with maximum probability will be selected, in the latter the
+                              actual AA is randomly sampled by the probability distribution between all
+                              20 amino-acids
+      :param ignored_amino_acids: List of one-letter code for amino-acids which will ignored during the
+                                  sampling (as their probability was 0)
+      :param ignore_het_atm: Flag indicating if the HETATM in the structure should be ignored. Defaults to
+                             False, in which case all atoms (including ligands, ions, ...) will be considered
+      :param ignore_water: Flag indicating if water molecules present in the PDB file should be ignored. If False,
+                           water molecules in the input file are considered during the sampling
+      """
+      if sampling_method not in [CARBonAraContainer.SAMPLING_MAX, CARBonAraContainer.SAMPLING_SAMPLED]:
+        raise ValueError(f'Invalid sampling_method: {sampling_method}')
+      self.num_sequences = num_sequences
+      self.imprint_ratio = imprint_ratio
+      self.sampling_method = sampling_method
+      self.ignored_amino_acids = ignored_amino_acids
+      self.ignore_het_atm = ignore_het_atm
+      self.ignore_water = ignore_water
+
+    def __str__(self):
+      return (f'carbonara:\n'
+              f' - num_sequences: {self.num_sequences}\n'
+              f' - imprint_ratio: {self.imprint_ratio}\n'
+              f' - sampling_method: {self.sampling_method}\n'
+              f' - ignored_amino_acids: {self.ignored_amino_acids}\n'
+              f' - ignore_het_atm: {self.ignore_het_atm}\n'
+              f' - ignore_water: {self.ignore_water}')
+
+  def __init__(self, epitope: Epitope, gpu_manager: CudaDeviceManager, config: CARBonAraConfig, **kwargs):
+    super().__init__(**kwargs)
+    self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
+    self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
+    self.epitope = epitope
+    self.gpu_manager = gpu_manager
+    self.config = config
+    self.container = CARBonAraContainer(
+      image=self.image,
+      input_dir=self.input_dir,
+      output_dir=self.output_dir,
+      num_sequences=self.config.num_sequences,
+      imprint_ratio=self.config.imprint_ratio,
+      sampling_method=self.config.sampling_method,
+      known_positions=self.__known_positions_by_epitope(),
+      client=self.client,
+      gpu_manager=self.gpu_manager
+    )
+
+  def __known_positions_by_epitope(self) -> List[int]:
+    return [r for r in range(self.epitope.start, self.epitope.end + 1)]
+
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
+    os.makedirs(self.input_dir, exist_ok=True)
+    os.makedirs(self.output_dir, exist_ok=True)
+    self.__copy_backbones_in_input_folder(sample_set)
+    res = self.container.run()
+    if not res:
+      raise PipelineException(f'CARBonAra container exited unsuccessfully')
+    return self.__retrieve_sequences_from_output_folder(sample_set)
+
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
+    pass
+
+  def __copy_backbones_in_input_folder(self, sample_set: SampleSet) -> None:
+    for sample in sample_set.samples():
+      # Copying input backbone PDB to input folder
+      basename = os.path.basename(sample.filepath)
+      shutil.copy2(sample.filepath, os.path.join(self.input_dir, basename))
+
+  def __retrieve_sequences_from_output_folder(self, sample_set: SampleSet) -> SampleSet:
+    for fasta in os.listdir(self.output_dir):
+      if fasta.endswith('.fa') or fasta.endswith('.fasta'):
+        sequence_name = fasta.replace('.fasta', '').replace('.fa', '')
+        tokens = sequence_name.split('_')
+        sample_name, seq_id = '_'.join(tokens[:-1]), int(tokens[-1])
+        sample = sample_set.get_sample_by_name(sample_name)
+        if not sample:
+          raise PipelineException(f'No sample with name {sample_name} found')
+        fasta_filepath = os.path.join(self.output_dir, fasta)
+        sequences = read_fasta(fasta_filepath)
+        if not sequences:
+          raise PipelineException(f'No sequences found in {fasta_filepath}')
+        # CARBonAra FASTAs contains just a single sequence
+        sample.add_sequences(Sequence(sequence_name, fasta_filepath, sample, sequences[0]))
+    return sample_set
+
+  def output_folder(self) -> str:
+    return self.output_dir
+
+  def input_folder(self) -> str:
+    return self.input_dir

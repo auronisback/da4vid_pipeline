@@ -6,6 +6,7 @@ import docker
 import dotenv
 import yaml
 
+from da4vid.docker.carbonara import CARBonAraContainer
 from da4vid.docker.colabfold import ColabFoldContainer
 from da4vid.docker.masif import MasifContainer
 from da4vid.docker.omegafold import OmegaFoldContainer
@@ -15,7 +16,7 @@ from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_from_pdb
 from da4vid.model.proteins import Protein, Epitope
 from da4vid.model.samples import Sample
-from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep
+from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep, CARBonAraStep
 from da4vid.pipeline.interaction import MasifStep
 from da4vid.pipeline.steps import CompositeStep, PipelineStep, PipelineRootStep, FoldCollectionStep
 from da4vid.pipeline.validation import OmegaFoldStep, SequenceFilteringStep, ColabFoldStep
@@ -32,7 +33,7 @@ class StaticConfig:
   def __init__(self, client: docker.DockerClient, gpu_manager: CudaDeviceManager,
                rfdiffusion_models_dir: str, omegafold_models_dir: str, colabfold_models_dir: str,
                rfdiffusion_image: str, protein_mpnn_image: str, omegafold_image: str, colabfold_image: str,
-               masif_image: str, omegafold_max_parallel: int, colabfold_max_parallel: int):
+               masif_image: str, omegafold_max_parallel: int, colabfold_max_parallel: int, carbonara_image: str):
     """
     Creates a new instance of static configuration of the pipeline. This should not be invoked
     directly, but an instance should be created using the <em>load_from_yaml</em> static method.
@@ -48,6 +49,7 @@ class StaticConfig:
     :param masif_image: Tag of the MaSIF docker image
     :param omegafold_max_parallel: Number of parallel instances for OmegaFold containers
     :param colabfold_max_parallel: Number of parallel instances for ColabFold containers
+    :param carbonara_image: Tag of the CARBonAra docker image
     :raise Da4vidConfigurationError: If images are not available, or models folder are invalid
     """
     self.client = client
@@ -62,6 +64,7 @@ class StaticConfig:
     self.masif_image = masif_image
     self.omegafold_max_parallel = omegafold_max_parallel
     self.colabfold_max_parallel = colabfold_max_parallel
+    self.carbonara_image = carbonara_image
     self.__check_parameters()
 
   def __check_parameters(self):
@@ -117,7 +120,8 @@ class StaticConfig:
         colabfold_models_dir=os.environ.get('COLABFOLD_MODEL_FOLDER', None),
         masif_image=os.environ.get('MASIF_IMAGE', MasifContainer.DEFAULT_IMAGE),
         omegafold_max_parallel=int(os.environ.get('OMEGAFOLD_MAX_PARALLEL', 1)),
-        colabfold_max_parallel=int(os.environ.get('COLABFOLD_MAX_PARALLEL', 1))
+        colabfold_max_parallel=int(os.environ.get('COLABFOLD_MAX_PARALLEL', 1)),
+        carbonara_image=os.environ.get('CARBONARA_IMAGE', CARBonAraContainer.DEFAULT_IMAGE)
       )
     return StaticConfig.instance
 
@@ -262,6 +266,24 @@ class PipelineCreator:
           model=el['model'],
           parent=parent
         )
+      case 'carbonara':
+        return CARBonAraStep(
+          name=el.get('name', 'CARBonAra'),
+          parent=parent,
+          image=self.static_config.carbonara_image,
+          client=self.static_config.client,
+          gpu_manager=self.static_config.gpu_manager,
+          epitope=root.epitope,
+          config=CARBonAraStep.CARBonAraConfig(
+            num_sequences=el['num_sequences'],
+            imprint_ratio=el.get('imprint_ratio', .5),
+            sampling_method=el.get('sampling_method', CARBonAraContainer.SAMPLING_SAMPLED),
+            ignored_amino_acids=None if 'ignored_amino_acids' not in el else
+                                [aa.strip() for aa in el['ignored_amino_acids'].split(' ')],
+            ignore_water=bool(el.get('ignore_water', False)),
+            ignore_het_atm=bool(el.get('ignore_het_atm', False))
+          )
+        )
       case _:  # Any other case is hopefully a composite step
         comp_step = CompositeStep(name=el_name, parent=parent, folder=el.get('folder', None))
         comp_step.add_step([self.__process_element(root, comp_step, step_el) for step_el in el['steps']])
@@ -327,6 +349,8 @@ class PipelinePrinter:
       self.__print_masif_step(step, header, last)
     elif isinstance(step, FoldCollectionStep):
       self.__print_fold_collection_step(step, header, last)
+    elif isinstance(step, CARBonAraStep):
+      self.__print_carbonara_step(step, header, last)
     else:
       print(header, file=self.file)
 
@@ -409,3 +433,18 @@ class PipelinePrinter:
   def __print_fold_collection_step(self, fc_step: FoldCollectionStep, header: str, last: bool) -> None:
     print(f'{header + (self.ELBOW if last else self.TEE)}FoldCollection', file=self.file)
     print(f'{header}{self.BLANK if last else self.PIPE}  +  Model: {fc_step.model}', file=self.file)
+
+  def __print_carbonara_step(self, cb_step: CARBonAraStep, header: str, last: bool):
+    print(f'{header + (self.ELBOW if last else self.TEE)}CARBonAra: {cb_step.name}', file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {cb_step.get_context_folder()}', file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Docker Image: {cb_step.image}', file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Number of Sequences: {cb_step.config.num_sequences}',
+          file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Imprint Ratio: {cb_step.config.imprint_ratio}',
+          file=self.file),
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Ignored Amino-Acids: {cb_step.config.ignored_amino_acids}',
+          file=self.file),
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Ignore Hetero-Atoms: {cb_step.config.ignore_het_atm}',
+          file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Ignore Water: {cb_step.config.ignore_water}',
+          file=self.file)

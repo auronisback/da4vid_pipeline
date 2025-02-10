@@ -1,8 +1,9 @@
 import os.path
+import time
 import unittest
 
-from da4vid.pipeline.config import PipelineCreator
-from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep
+from da4vid.pipeline.config import PipelineCreator, PipelinePrinter
+from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep, CARBonAraStep
 from da4vid.pipeline.steps import CompositeStep
 from test.cfg import DOTENV_FILE, RESOURCES_ROOT
 
@@ -76,3 +77,20 @@ class PipelineCreatorTest(unittest.TestCase):
   def test_pipeline_from_yml_raise_error_if_two_steps_have_the_same_context_folder(self):
       with self.assertRaises(PipelineCreator.PipelineCreationError):
         PipelineCreator().from_yml(os.path.join(self.resources, 'two_iterations_test_folder_mismatch.yml'))
+
+  def test_pipeline_from_yml_with_carbonara_step(self):
+    pipeline = PipelineCreator().from_yml(os.path.join(self.resources, 'carbonara_test.yml'))
+    self.assertEqual(3, len(pipeline.steps))
+    cb_step = pipeline.steps[2]
+    self.assertEqual('CARBonAra', cb_step.name)
+    self.assertIsInstance(cb_step, CARBonAraStep)
+    self.assertEqual(100, cb_step.config.num_sequences)
+    self.assertEqual(.2, cb_step.config.imprint_ratio)
+    self.assertTrue(cb_step.config.ignore_het_atm)
+    self.assertFalse(cb_step.config.ignore_water)
+    self.assertEqual(4, len(cb_step.config.ignored_amino_acids))
+    for ignored_aa in ['A', 'C', 'K', 'Y']:
+      self.assertIn(ignored_aa, cb_step.config.ignored_amino_acids)
+
+
+

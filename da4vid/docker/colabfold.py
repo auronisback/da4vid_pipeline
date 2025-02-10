@@ -44,7 +44,6 @@ class ColabFoldContainer(BaseContainer):
     if model_name not in ColabFoldContainer.MODEL_NAMES:
       raise ValueError(f'given model "{model_name}" is invalid '
                        f'(choices: {", ".join(ColabFoldContainer.MODEL_NAMES)})')
-    # TODO: IMPORTANT: use the right MSA
     self.input_dir = input_dir
     self.output_dir = output_dir
     self.model_name = model_name

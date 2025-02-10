@@ -77,3 +77,7 @@ demo pipeline:
                             max_samples: 10
                     -   fold_collection:
                             model: 'alphafold2'
+    -   interactions:
+            steps:
+            -   masif:
+                    name: 'MaSIF'

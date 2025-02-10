@@ -1,4 +1,7 @@
+import logging
 import os.path
+import time
+from datetime import datetime
 
 from da4vid.pipeline.steps import PipelineStep, CompositeStep
 
@@ -55,3 +58,48 @@ class ProgressManager:
 
   def has_been_completed(self, step: PipelineStep) -> bool:
     return step.full_name() in self.progress
+
+
+class ElapsedTimeSaver:
+  """
+  Class abstracting callbacks to save the time elapsed between steps, in CSV format.
+  """
+
+  COLUMNS = ['step', 'elapsed (s)']
+
+  def __init__(self, time_file: str, force_rewrite: bool = False, delimiter: str = ';'):
+    if os.path.isdir(time_file):
+      raise FileExistsError(f'Time file is a directory: {time_file}')
+    if os.path.exists(time_file) and not force_rewrite:
+      raise FileExistsError(f'Time file already exists and force_rewrite has not been specified')
+    self.time_file = time_file
+    self.delimiter = delimiter
+    self.__stack = []  # Stack for saving names and starting time in case of composite steps
+    with open(time_file, 'w') as f:
+      f.write(delimiter.join(self.COLUMNS) + "\n")
+      f.flush()
+
+  def register(self, step: PipelineStep) -> None:
+    """
+    Register callbacks in this object to the given step. If the step is
+    composite, then callbacks will be registered to all of its sub-steps.
+    :param step: A pipeline step
+    """
+    step.register_pre_step_fn(self.on_step_start)
+    step.register_post_step_fn(self.on_step_end)
+    if isinstance(step, CompositeStep):
+      for sub_step in step.steps:
+        self.register(sub_step)
+
+  def on_step_start(self, step: PipelineStep, **kwargs) -> None:
+    self.__stack.append((step.full_name(), datetime.fromtimestamp(time.time())))
+
+  def on_step_end(self, step: PipelineStep, **kwargs) -> None:
+    last_step, start = self.__stack.pop()
+    if last_step != step.full_name():
+      logging.warning(f'Invalid step: expecting {last_step}, seen {step.full_name()}')
+    else:
+      end = datetime.fromtimestamp(time.time())
+      elapsed = end - start
+      with open(self.time_file, 'a') as f:
+        f.write(self.delimiter.join([step.full_name(), str(elapsed.total_seconds())]) + "\n")
