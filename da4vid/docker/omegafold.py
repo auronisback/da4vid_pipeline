@@ -95,9 +95,9 @@ class OmegaFoldContainer(BaseContainer):
     n = len(files) // self.max_parallel
     rem = len(files) % self.max_parallel
     ff = []
+    start = 0
     for i in range(self.max_parallel):
-      if i < rem:
-        ff.append(files[i:i + n + 1])
-      else:
-        ff.append(files[i:i + n])
+      end = start + n + 1 if i < rem else start + n
+      ff.append(files[start:end])
+      start = end
     return ff

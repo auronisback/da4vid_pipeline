@@ -90,12 +90,9 @@ class ColabFoldContainer(BaseContainer):
     ff = []
     start = 0
     for i in range(self.max_parallel):
-      if i < rem:
-        ff.append(files[start:start + n + 1])
-        start = start + n + 1
-      else:
-        ff.append(files[start:start + n])
-        start = start + n
+      end = start + n + 1 if i < rem else start + n
+      ff.append(files[start:end])
+      start = end
     return ff
 
   def __execute_commands_for_single_fasta(self, container, f: str) -> bool:
