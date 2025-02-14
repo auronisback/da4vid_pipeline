@@ -122,12 +122,12 @@ def show(configuration, json: bool) -> None:
 
 def __progress_file_from_configuration_path(configuration: str) -> str:
   return os.path.join(os.path.dirname(configuration),
-                      '.'.join(configuration.split('.')[:-1]) + '.progress')
+                      '.'.join(os.path.basename(configuration).split('.')[:-1]) + '.progress')
 
 
 def __elapsed_time_from_configuration_path(configuration: str) -> str:
   return os.path.join(os.path.dirname(configuration),
-                      '.'.join(configuration.split('.')[:-1]) + '.time.csv')
+                      '.'.join(os.path.basename(configuration).split('.')[:-1]) + '.time.csv')
 
 
 if __name__ == '__main__':

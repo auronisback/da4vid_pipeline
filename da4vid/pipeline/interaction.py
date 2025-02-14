@@ -66,7 +66,7 @@ class MasifStep(DockerStep):
     if not masif.run():
       raise PipelineException('MaSIF container failed')
 
-  def __refactor_outputs(self):
+  def __refactor_outputs(self):  # TODO: check
     os.makedirs(self.output_dir, exist_ok=True)
     meshes_folder = os.path.join(self.container_out_dir, 'meshes')
     for mesh_folder in os.listdir(meshes_folder):
