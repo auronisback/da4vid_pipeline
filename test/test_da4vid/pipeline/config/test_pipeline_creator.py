@@ -2,7 +2,8 @@ import os.path
 import time
 import unittest
 
-from da4vid.pipeline.config import PipelineCreator, PipelinePrinter
+from da4vid.pipeline.config import PipelineCreator
+from da4vid.pipeline.utils import PipelinePrinter
 from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep, CARBonAraStep
 from da4vid.pipeline.steps import CompositeStep
 from test.cfg import DOTENV_FILE, RESOURCES_ROOT

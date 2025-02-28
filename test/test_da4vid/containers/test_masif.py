@@ -5,11 +5,11 @@ import warnings
 
 import docker
 
-from da4vid.docker.base import BaseContainer
-from da4vid.docker.masif import MasifContainer
+from da4vid.containers.docker import DockerExecutorBuilder, DockerExecutor
+from da4vid.containers.masif import MasifContainer
 from da4vid.gpus.cuda import CudaDeviceManager
 from test.cfg import RESOURCES_ROOT
-from test.test_da4vid.docker.helpers import duplicate_image, remove_duplicate_image
+from test.test_da4vid.containers.helpers import duplicate_image, remove_duplicate_image
 
 
 class MasifTest(unittest.TestCase):
@@ -20,9 +20,10 @@ class MasifTest(unittest.TestCase):
     self.gpu_manager = CudaDeviceManager()
     self.client = docker.from_env()
     duplicate_image(self.client, 'da4vid/masif', 'masif_duplicate')
-    self.resource_path = os.path.join(RESOURCES_ROOT, 'docker_test', 'masif_test')
+    self.resource_path = os.path.join(RESOURCES_ROOT, 'container_test', 'masif_test')
     self.input_dir = os.path.join(self.resource_path, 'inputs')
     self.output_dir = os.path.join(self.resource_path, 'outputs')
+    self.builder = DockerExecutorBuilder().set_client(self.client).set_image(MasifContainer.DEFAULT_IMAGE)
     os.makedirs(self.output_dir, exist_ok=True)
 
   def tearDown(self):
@@ -31,32 +32,32 @@ class MasifTest(unittest.TestCase):
     self.client.close()
 
   def test_masif_should_raise_error_if_invalid_image(self):
+    self.builder.set_image('invalid_image')
     mc = MasifContainer(
-      image='invalid_image',
-      client=self.client,
+      builder=self.builder,
       gpu_manager=self.gpu_manager,
       input_folder=self.input_dir,
       output_folder=self.output_dir
     )
-    with self.assertRaises(BaseContainer.DockerImageNotFoundException):
+    with self.assertRaises(DockerExecutor.DockerImageNotFoundException):
       mc.run()
 
   def test_masif_should_succeed_with_default_image(self):
     mc = MasifContainer(
+      builder=self.builder,
       input_folder=self.input_dir,
       output_folder=self.output_dir,
-      client=self.client,
       gpu_manager=self.gpu_manager
     )
     res = mc.run()
     self.assertTrue(res, 'Masif container ended unsuccessfully')
 
   def test_masif_should_succeed_with_specified_image(self):
+    self.builder.set_image('masif_duplicate')
     mc = MasifContainer(
-      image='masif_duplicate',
+      builder=self.builder,
       input_folder=self.input_dir,
       output_folder=self.output_dir,
-      client=self.client,
       gpu_manager=self.gpu_manager
     )
     res = mc.run()

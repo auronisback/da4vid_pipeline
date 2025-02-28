@@ -1,19 +1,18 @@
 import abc
+import logging
 import os
 import shutil
-import sys
 
-import torch
 import numpy as np
+import torch
 
-from da4vid.docker.masif import MasifContainer
-from da4vid.gpus.cuda import CudaDeviceManager
+from da4vid.containers.masif import MasifContainer
 from da4vid.model.proteins import Protein
 from da4vid.model.samples import SampleSet
-from da4vid.pipeline.steps import DockerStep, PipelineException
+from da4vid.pipeline.steps import ContainerizedStep, PipelineException
 
 
-class MasifStep(DockerStep):
+class MasifStep(ContainerizedStep):
 
   MASIF_INTERACTION_PROP_KEY = 'masif.interaction_prob'
 
@@ -23,9 +22,8 @@ class MasifStep(DockerStep):
     """
     pass
 
-  def __init__(self, gpu_manager: CudaDeviceManager, **kwargs):
+  def __init__(self, **kwargs):
     super().__init__(**kwargs)
-    self.gpu_manager = gpu_manager
     self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
     self.container_out_dir = os.path.join(self.get_context_folder(), 'tmp_out')
@@ -57,8 +55,7 @@ class MasifStep(DockerStep):
   def __execute_container(self):
     os.makedirs(self.container_out_dir, exist_ok=True)
     masif = MasifContainer(
-      client=self.client,
-      image=self.image,
+      builder=self.builder,
       gpu_manager=self.gpu_manager,
       input_folder=self.input_dir,
       output_folder=self.container_out_dir
@@ -74,7 +71,7 @@ class MasifStep(DockerStep):
       shutil.move(os.path.join(meshes_folder, mesh_folder), out_mesh_folder)
       pred_data_file = os.path.join(self.container_out_dir, 'pred_data', f'pred_{mesh_folder}.npy')
       if not os.path.exists(pred_data_file):
-        print(f'Unable to find predictions for {mesh_folder}', file=sys.stderr)
+        logging.warning(f'Unable to find predictions for {mesh_folder}')
       shutil.move(pred_data_file, out_mesh_folder)
     shutil.rmtree(self.container_out_dir)
 

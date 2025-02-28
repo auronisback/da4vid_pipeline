@@ -1,0 +1,16 @@
+Bootstrap: docker
+From: pablogainza/masif:latest
+Stage: spython-base
+
+%files
+./resources/prepare_from_list.sh /masif/data/masif_site
+%post
+
+
+mkdir -p /masif/data/masif_site
+cd /masif/data/masif_site
+
+%runscript
+cd /masif/data/masif_site
+exec /bin/bash "$@"
+

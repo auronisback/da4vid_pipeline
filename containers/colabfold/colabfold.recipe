@@ -1,0 +1,15 @@
+Bootstrap: docker
+From: ghcr.io/sokrypton/colabfold:1.5.5-cuda12.2.2
+Stage: spython-base
+
+%files
+./resources/copy_msa.py /colabfold/scripts/copy_msa.py
+%post
+
+
+mkdir -p /colabfold
+cd /colabfold
+
+%runscript
+cd /colabfold
+exec /bin/bash "$@"

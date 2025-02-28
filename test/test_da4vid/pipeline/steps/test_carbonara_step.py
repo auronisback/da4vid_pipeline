@@ -5,13 +5,13 @@ import warnings
 
 import docker
 
-from da4vid.docker.carbonara import CARBonAraContainer
+from da4vid.containers.carbonara import CARBonAraContainer
+from da4vid.containers.docker import DockerExecutorBuilder
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io.sample_io import sample_set_from_backbones
 from da4vid.model.proteins import Epitope
-from da4vid.pipeline.config import StaticConfig
 from da4vid.pipeline.generation import CARBonAraStep
-from test.cfg import RESOURCES_ROOT, DOTENV_FILE
+from test.cfg import RESOURCES_ROOT
 
 
 class CARBonAraStepTest(unittest.TestCase):
@@ -20,10 +20,10 @@ class CARBonAraStepTest(unittest.TestCase):
     warnings.simplefilter('ignore', ResourceWarning)
     self.client = docker.from_env()
     self.gpu_manager = CudaDeviceManager()
-    self.image = StaticConfig.get(DOTENV_FILE).carbonara_image
     resources = os.path.join(RESOURCES_ROOT, 'steps_test', 'carbonara_test')
     self.backbone_folder = os.path.join(resources, 'backbones')
     self.folder = os.path.join(resources, 'step_folder')
+    self.builder = DockerExecutorBuilder().set_client(self.client).set_image(CARBonAraContainer.DEFAULT_IMAGE)
 
   def tearDown(self):
     self.client.close()
@@ -34,7 +34,7 @@ class CARBonAraStepTest(unittest.TestCase):
     sample_set = sample_set_from_backbones(self.backbone_folder)
     epitope = Epitope('A', 27, 35, sample_set.samples()[0].protein)
     cb_step = CARBonAraStep(
-      image=self.image,
+      builder=self.builder,
       epitope=epitope,
       config=CARBonAraStep.CARBonAraConfig(
         num_sequences=5,
@@ -55,4 +55,4 @@ class CARBonAraStepTest(unittest.TestCase):
       for j, sequence in enumerate(sample.sequences()):
         epi_resi = sequence.sequence_to_str()[epitope.start - 1: epitope.end]
         self.assertEqual(epitope.sequence(), epi_resi, f'Epitope mismatch for sample {i} sequence {j}: '
-                                                        f'{epitope.sequence()} expected, but found {epi_resi}')
+                                                       f'{epitope.sequence()} expected, but found {epi_resi}')

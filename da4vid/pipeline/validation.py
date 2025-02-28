@@ -7,18 +7,18 @@ from typing import List
 import torch
 from tqdm import tqdm
 
-from da4vid.docker.colabfold import ColabFoldContainer
-from da4vid.docker.omegafold import OmegaFoldContainer
+from da4vid.containers.colabfold import ColabFoldContainer
+from da4vid.containers.omegafold import OmegaFoldContainer
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_from_pdb
 from da4vid.io.fasta_io import write_fasta
 from da4vid.metrics import evaluate_plddt, rog
 from da4vid.model.proteins import Proteins
 from da4vid.model.samples import SampleSet, Fold, Sequence, Sample
-from da4vid.pipeline.steps import PipelineStep, DockerStep, PipelineException
+from da4vid.pipeline.steps import PipelineStep, ContainerizedStep, PipelineException
 
 
-class OmegaFoldStep(DockerStep):
+class OmegaFoldStep(ContainerizedStep):
   """
   Class implementing an OmegaFold prediction step in the pipeline.
   """
@@ -39,21 +39,19 @@ class OmegaFoldStep(DockerStep):
               f' - num_recycles: {self.num_recycles}\n'
               f' - model_weights: {self.model_weights}\n')
 
-  def __init__(self, model_dir: str, gpu_manager: CudaDeviceManager,
-               config: OmegaFoldConfig, max_parallel: int = 1, **kwargs):
+  def __init__(self, model_dir: str, config: OmegaFoldConfig, max_parallel: int = 1, **kwargs):
     super().__init__(**kwargs)
     self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
-    self.gpu_manager = gpu_manager
     self.max_parallel = max_parallel
     self.config = config
     self.container = OmegaFoldContainer(
+      builder=self.builder,
       model_dir=model_dir,
       input_dir=self.input_dir,
       output_dir=self.output_dir,
       num_recycles=self.config.num_recycles,
       model_weights=self.config.model_weights,
-      client=self.client,
       gpu_manager=self.gpu_manager,
       max_parallel=self.max_parallel,
       out_logfile=self.out_logfile,
@@ -68,11 +66,11 @@ class OmegaFoldStep(DockerStep):
     # Creating output directory
     self.__create_directories_from_sample_set(sample_set)
     # Starting OmegaFold
-    print('Running OmegaFold for structure prediction')
-    print(f' - input folder: {self.input_dir}')
-    print(f' - output folder: {self.output_dir}')
-    print(f' - model weights: {self.config.model_weights}')
-    print(f' - num_recycles: {self.config.num_recycles}')
+    logging.info('Running OmegaFold for structure prediction')
+    logging.info(f' - input folder: {self.input_dir}')
+    logging.info(f' - output folder: {self.output_dir}')
+    logging.info(f' - model weights: {self.config.model_weights}')
+    logging.info(f' - num_recycles: {self.config.num_recycles}')
     if not self.container.run():
       raise PipelineException('OmegaFold step failed')
     # Merging data
@@ -94,7 +92,7 @@ class OmegaFoldStep(DockerStep):
       shutil.copy2(sequence_fasta, os.path.join(self.input_dir, f'{os.path.basename(sequence_fasta)}'))
 
   def __merge_data(self, sample_set: SampleSet) -> SampleSet:
-    print('Retrieving Omegafold predictions')
+    logging.info('Retrieving Omegafold predictions')
     pdb_files = []
     for d in os.listdir(self.output_dir):
       full_path = os.path.join(self.output_dir, d)
@@ -160,7 +158,7 @@ class SequenceFilteringStep(PipelineStep):
     :return: The SampleSet object with filtered samples for each original backbone
     """
     filtered_set = SampleSet()
-    print(f'Filtering samples with mean pLDDT >= {self.plddt_threshold}')
+    logging.info(f'Filtering samples with mean pLDDT >= {self.plddt_threshold}')
     for sample in tqdm(sample_set.samples(), file=sys.stdout):
       folds = sample.get_folds_for_model(self.model)
       filtered_folds = self.__filter_by_plddt(folds)
@@ -171,7 +169,7 @@ class SequenceFilteringStep(PipelineStep):
         new_sample = Sample(sample.name, sample.filepath, sample.protein)
         new_sample.add_sequences([fold.sequence for fold in filtered_folds])
         filtered_set.add_samples(new_sample)
-    print(f'Filtered {len(filtered_set.samples())} samples for a total of '
+    logging.info(f'Filtered {len(filtered_set.samples())} samples for a total of '
           f'{len([fold for sample in filtered_set.samples() for fold in sample.get_folds_for_model(self.model)])} '
           f'folds')
     self.__save_filtered_set(filtered_set)
@@ -219,7 +217,7 @@ class SequenceFilteringStep(PipelineStep):
     return self.output_dir
 
 
-class ColabFoldStep(DockerStep):
+class ColabFoldStep(ContainerizedStep):
   class ColabFoldConfig:
     def __init__(self, num_recycles: int = 3, model_name: str = ColabFoldContainer.MODEL_NAMES[0],
                  num_models: int = 5, msa_host_url: str = ColabFoldContainer.COLABFOLD_API_URL,
@@ -246,14 +244,12 @@ class ColabFoldStep(DockerStep):
               f' - msa_host_url: {self.msa_host_url}\n'
               f' - zip_outputs: {self.zip_outputs}\n')
 
-  def __init__(self, model_dir: str, gpu_manager: CudaDeviceManager,
-               config: ColabFoldConfig, max_parallel: int = 1, **kwargs):
+  def __init__(self, model_dir: str, config: ColabFoldConfig, max_parallel: int = 1, **kwargs):
     super().__init__(**kwargs)
     self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
     self.model_dir = model_dir
     self.config = config
-    self.gpu_manager = gpu_manager
     self.max_parallel = max_parallel
 
   def _execute(self, sample_set: SampleSet) -> SampleSet:
@@ -274,7 +270,8 @@ class ColabFoldStep(DockerStep):
 
   def __create_container(self, input_dir: str) -> ColabFoldContainer:
     return ColabFoldContainer(
-      image=self.image,
+      builder=self.builder,
+      gpu_manager=self.gpu_manager,
       model_dir=self.model_dir,
       input_dir=input_dir,
       output_dir=self.output_dir,
@@ -283,9 +280,7 @@ class ColabFoldStep(DockerStep):
       zip_outputs=self.config.zip_outputs,
       num_models=self.config.num_models,
       msa_host_url=self.config.msa_host_url,
-      max_parallel=self.max_parallel,
-      client=self.client,
-      gpu_manager=self.gpu_manager
+      max_parallel=self.max_parallel
     )
 
   def __create_tmp_input_folder(self) -> str:
@@ -324,7 +319,7 @@ class ColabFoldStep(DockerStep):
           sequence.add_folds(self.__extract_fold(os.path.join(self.output_dir, f), sequence))
 
   def __process_sample_folds(self, sample: Sample, folds_folder: str) -> None:
-    print(f'Processing folder: {folds_folder}')
+    logging.info(f'Processing folder: {folds_folder}')
     for f in os.listdir(folds_folder):
       filepath = os.path.join(folds_folder, f)
       if "rank_001" not in f or not f.endswith('.pdb'):

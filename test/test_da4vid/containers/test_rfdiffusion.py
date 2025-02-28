@@ -1,3 +1,4 @@
+import logging
 import os.path
 import shutil
 import unittest
@@ -5,14 +6,16 @@ import warnings
 
 import docker
 import dotenv
+import spython.main
 
-from da4vid.docker.base import BaseContainer
-from da4vid.docker.rfdiffusion import RFdiffusionContigMap, RFdiffusionPotentials, RFdiffusionContainer
+from da4vid.containers.docker import DockerExecutorBuilder, DockerExecutor
+from da4vid.containers.rfdiffusion import RFdiffusionContigMap, RFdiffusionPotentials, RFdiffusionContainer
+from da4vid.containers.singularity import SingularityExecutorBuilder, SingularityExecutor
 from da4vid.gpus.cuda import CudaDeviceManager
-from da4vid.model.proteins import Protein
 from da4vid.io.pdb_io import read_from_pdb
+from da4vid.model.proteins import Protein, Epitope
 from test.cfg import RESOURCES_ROOT, DOTENV_FILE
-from test.test_da4vid.docker.helpers import duplicate_image, remove_duplicate_image
+from test.test_da4vid.containers.helpers import duplicate_image, remove_duplicate_image
 
 
 class RFdiffusionContigMapTest(unittest.TestCase):
@@ -20,7 +23,7 @@ class RFdiffusionContigMapTest(unittest.TestCase):
   @staticmethod
   def __load_protein() -> Protein:
     return read_from_pdb(
-      os.path.join(RESOURCES_ROOT, 'docker_test', 'rfdiffusion_test', 'rfdiffusion_test.pdb'))
+      os.path.join(RESOURCES_ROOT, 'container_test', 'rfdiffusion_test', 'rfdiffusion_test.pdb'))
 
   def test_add_random_length_contig_with_min_and_max(self):
     contig_map = RFdiffusionContigMap()
@@ -173,6 +176,7 @@ class RFdiffusionContigMapTest(unittest.TestCase):
 
 
 class RFdiffusionPotentialsTest(unittest.TestCase):
+
   def test_add_monomer_contacts_potential(self):
     potentials = RFdiffusionPotentials()
     potentials.add_monomer_contacts(5, 1.2)
@@ -270,12 +274,12 @@ class RFdiffusionPotentialsTest(unittest.TestCase):
     self.assertEqual('["type:monomer_contacts,r_0:4,weight:1","type:monomer_ROG,min_dist:11.3,weight:1.2"]', pot_string)
 
 
-class RFdiffusionTest(unittest.TestCase):
+class RFdiffusionDockerContainerTest(unittest.TestCase):
 
   def setUp(self):
     # Ignoring docker SDK warnings (still an unresolved issue in the SDK)
     warnings.simplefilter('ignore', ResourceWarning)
-    self.resources_path = os.path.join(RESOURCES_ROOT, 'docker_test', 'rfdiffusion_test')
+    self.resources_path = os.path.join(RESOURCES_ROOT, 'container_test', 'rfdiffusion_test')
     self.input_dir = os.path.join(self.resources_path, 'inputs')
     os.makedirs(self.input_dir, exist_ok=True)
     self.output_dir = os.path.join(self.resources_path, 'outputs')
@@ -284,6 +288,8 @@ class RFdiffusionTest(unittest.TestCase):
     self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['RFDIFFUSION_MODEL_FOLDER']
     self.client = docker.from_env()
     self.gpu_manager = CudaDeviceManager()
+    self.builder = DockerExecutorBuilder().set_image(RFdiffusionContainer.DEFAULT_IMAGE)
+    self.builder.set_client(self.client)
     duplicate_image(self.client, 'da4vid/rfdiffusion', 'rfdiff_duplicate')
 
   def tearDown(self):
@@ -293,17 +299,18 @@ class RFdiffusionTest(unittest.TestCase):
     self.client.close()
 
   def test_should_raise_error_if_invalid_image(self):
+    # TODO: this should be moved among DockerExecutorBuilder tests
+    self.builder.set_image('invalid_image')
     rfdiff = RFdiffusionContainer(
-      image='invalid_image',
+      builder=self.builder,
       input_dir=self.input_dir,
       input_pdb=self.input_pdb,
       output_dir=self.output_dir,
       model_dir=self.model_weights,
       contig_map=RFdiffusionContigMap(),
-      client=self.client,
       gpu_manager=self.gpu_manager
     )
-    with self.assertRaises(BaseContainer.DockerImageNotFoundException):
+    with self.assertRaises(DockerExecutor.DockerImageNotFoundException):
       rfdiff.run()
 
   def test_should_correctly_execute_diffusion_with_default_image(self):
@@ -313,6 +320,7 @@ class RFdiffusionTest(unittest.TestCase):
     contigs.add_fixed_sequence('A', 16, 25)
     contigs.add_random_length_sequence(10, 15)
     res = RFdiffusionContainer(
+      builder=self.builder,
       input_dir=self.input_dir,
       input_pdb=self.input_pdb,
       output_dir=self.output_dir,
@@ -320,7 +328,6 @@ class RFdiffusionTest(unittest.TestCase):
       contig_map=contigs,
       num_designs=3,
       diffuser_T=15,
-      client=self.client,
       gpu_manager=self.gpu_manager
     ).run()
     self.assertTrue(res, 'RFdiffusion container stopped with errors!')
@@ -333,8 +340,9 @@ class RFdiffusionTest(unittest.TestCase):
     contigs.add_random_length_sequence(10, 15)
     contigs.add_fixed_sequence('A', 16, 25)
     contigs.add_random_length_sequence(10, 15)
+    self.builder.set_image('rfdiff_duplicate')
     res = RFdiffusionContainer(
-      image='rfdiff_duplicate',
+      builder=self.builder,
       input_dir=self.input_dir,
       input_pdb=self.input_pdb,
       output_dir=self.output_dir,
@@ -342,12 +350,104 @@ class RFdiffusionTest(unittest.TestCase):
       contig_map=contigs,
       num_designs=2,
       diffuser_T=15,
-      client=self.client,
       gpu_manager=self.gpu_manager
     ).run()
     self.assertTrue(res, 'RFdiffusion container stopped with errors!')
     diffused = [f for f in os.listdir(self.output_dir) if f.endswith('.pdb')]
     self.assertEqual(2, len(diffused))
+
+  def test_should_correctly_execute_partial_diffusion_with_potentials(self):
+    protein = read_from_pdb(self.input_pdb)
+    contigs = RFdiffusionContigMap.partial_diffusion_around_epitope(protein, Epitope('A', 21, 30))
+    res = RFdiffusionContainer(
+      builder=self.builder,
+      input_dir=self.input_dir,
+      input_pdb=self.input_pdb,
+      output_dir=self.output_dir,
+      model_dir=self.model_weights,
+      contig_map=contigs,
+      num_designs=3,
+      partial_T=15,
+      potentials=RFdiffusionPotentials(guiding_scale=10).linear_decay().add_monomer_contacts(5).add_rog(5),
+      gpu_manager=self.gpu_manager
+    ).run()
+    self.assertTrue(res, 'RFdiffusion container stopped with errors!')
+
+
+class RFdiffusionSingularityContainerTest(unittest.TestCase):
+
+  def setUp(self):
+    # Ignoring docker SDK warnings (still an unresolved issue in the SDK)
+    warnings.simplefilter('ignore', ResourceWarning)
+    self.resources_path = os.path.join(RESOURCES_ROOT, 'container_test', 'rfdiffusion_test')
+    self.input_dir = os.path.join(self.resources_path, 'inputs')
+    os.makedirs(self.input_dir, exist_ok=True)
+    self.output_dir = os.path.join(self.resources_path, 'outputs')
+    os.makedirs(self.output_dir, exist_ok=True)
+    self.input_pdb = os.path.join(self.resources_path, 'rfdiffusion_test.pdb')
+    self.model_weights = dotenv.dotenv_values(DOTENV_FILE)['RFDIFFUSION_MODEL_FOLDER']
+    self.client = spython.main.get_client()
+    self.sif_path = dotenv.dotenv_values(DOTENV_FILE)['RFDIFFUSION_SIF']
+    self.gpu_manager = CudaDeviceManager()
+    self.builder = SingularityExecutorBuilder().set_client(self.client).set_sif_path(self.sif_path)
+    self.builder.preserve_quotes_in_cmds(['"'])
+
+  def tearDown(self):
+    shutil.rmtree(self.input_dir)
+    shutil.rmtree(self.output_dir)
+
+  def test_should_raise_error_if_invalid_sif(self):
+    # TODO: this should be moved among DockerExecutorBuilder tests
+    self.builder.set_sif_path('invalid_sif')
+    rfdiff = RFdiffusionContainer(
+      builder=self.builder,
+      input_dir=self.input_dir,
+      input_pdb=self.input_pdb,
+      output_dir=self.output_dir,
+      model_dir=self.model_weights,
+      contig_map=RFdiffusionContigMap(),
+      gpu_manager=self.gpu_manager
+    )
+    with self.assertRaises(SingularityExecutor.SifFileNotFoundException):
+      rfdiff.run()
+
+  def test_should_correctly_execute_diffusion(self):
+    protein = read_from_pdb(self.input_pdb)
+    contigs = RFdiffusionContigMap(protein)
+    contigs.add_random_length_sequence(10, 15)
+    contigs.add_fixed_sequence('A', 16, 25)
+    contigs.add_random_length_sequence(10, 15)
+    res = RFdiffusionContainer(
+      builder=self.builder,
+      input_dir=self.input_dir,
+      input_pdb=self.input_pdb,
+      output_dir=self.output_dir,
+      model_dir=self.model_weights,
+      contig_map=contigs,
+      num_designs=3,
+      diffuser_T=15,
+      gpu_manager=self.gpu_manager
+    ).run()
+    self.assertTrue(res, 'RFdiffusion container stopped with errors!')
+    diffused = [f for f in os.listdir(self.output_dir) if f.endswith('.pdb')]
+    self.assertEqual(3, len(diffused))
+
+  def test_should_correctly_execute_partial_diffusion_with_potentials(self):
+    protein = read_from_pdb(self.input_pdb)
+    contigs = RFdiffusionContigMap.partial_diffusion_around_epitope(protein, Epitope('A', 21, 30))
+    res = RFdiffusionContainer(
+      builder=self.builder,
+      input_dir=self.input_dir,
+      input_pdb=self.input_pdb,
+      output_dir=self.output_dir,
+      model_dir=self.model_weights,
+      contig_map=contigs,
+      num_designs=3,
+      partial_T=15,
+      potentials=RFdiffusionPotentials(guiding_scale=10).linear_decay().add_monomer_contacts(5).add_rog(5),
+      gpu_manager=self.gpu_manager
+    ).run()
+    self.assertTrue(res, 'RFdiffusion container stopped with errors!')
 
 
 if __name__ == '__main__':

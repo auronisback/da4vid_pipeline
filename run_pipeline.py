@@ -8,7 +8,8 @@ import click
 
 from da4vid.model.samples import SampleSet
 from da4vid.pipeline.callbacks import ProgressManager, ElapsedTimeSaver
-from da4vid.pipeline.config import PipelineCreator, PipelinePrinter
+from da4vid.pipeline.config import PipelineCreator
+from da4vid.pipeline.utils import PipelinePrinter
 from da4vid.pipeline.steps import PipelineStep, PipelineRootStep, CompositeStep
 
 

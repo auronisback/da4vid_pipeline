@@ -121,7 +121,7 @@ class CudaDeviceManager:
     """
     Defines a round-robin policy to assign devices.
     """
-    def __init__(self, manager):
+    def __init__(self, manager: 'CudaDeviceManager'):
       self.manager = manager
       self.actual = 0
 

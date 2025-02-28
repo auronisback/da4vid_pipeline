@@ -6,12 +6,13 @@ import warnings
 import docker
 import torch
 
+from da4vid.containers.docker import DockerExecutorBuilder
+from da4vid.containers.masif import MasifContainer
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_from_pdb
 from da4vid.io.sample_io import sample_set_from_backbones
-from da4vid.pipeline.config import StaticConfig
 from da4vid.pipeline.interaction import MasifStep, PointCloud2ResiPredictions
-from test.cfg import RESOURCES_ROOT, DOTENV_FILE
+from test.cfg import RESOURCES_ROOT
 
 
 class PointCloudTest(unittest.TestCase):
@@ -34,11 +35,11 @@ class MasifStepTest(unittest.TestCase):
     warnings.simplefilter('ignore', ResourceWarning)
     self.client = docker.from_env()
     self.gpu_manager = CudaDeviceManager()
-    self.masif_image = StaticConfig.get(DOTENV_FILE).masif_image
     self.resource_folder = os.path.join(RESOURCES_ROOT, 'steps_test', 'masif_test')
     self.exec_folder = os.path.join(self.resource_folder, 'step_folder')
     self.input_folder = os.path.join(self.resource_folder, 'inputs')
     self.resume_folder = os.path.join(self.resource_folder, 'masif_resume')
+    self.builder = DockerExecutorBuilder().set_client(self.client).set_image(MasifContainer.DEFAULT_IMAGE)
 
   def tearDown(self):
     if os.path.isdir(self.exec_folder):
@@ -48,11 +49,10 @@ class MasifStepTest(unittest.TestCase):
   def test_should_evaluate_interactions(self):
     sample_set = sample_set_from_backbones(self.input_folder)
     step = MasifStep(
+      builder=self.builder,
       name='masif',
-      client=self.client,
       folder=self.exec_folder,
       gpu_manager=self.gpu_manager,
-      image=self.masif_image
     )
     res_set = step.execute(sample_set)
     output_folders = os.listdir(step.output_dir)
@@ -68,11 +68,10 @@ class MasifStepTest(unittest.TestCase):
   def test_should_resume_from_previous_evaluation(self):
     sample_set = sample_set_from_backbones(self.input_folder)
     step = MasifStep(
+      builder=self.builder,
       name='masif',
-      client=self.client,
       folder=self.resume_folder,
       gpu_manager=self.gpu_manager,
-      image=self.masif_image
     )
     res_set = step.resume(sample_set)
     output_folders = os.listdir(step.output_dir)

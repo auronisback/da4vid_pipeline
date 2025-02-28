@@ -1,11 +1,10 @@
+import logging
 import os
 from typing import List
 
-import docker
-
-from da4vid.docker.base import BaseContainer, ContainerLogs
+from da4vid.containers.base import BaseContainer
+from da4vid.containers.executor import ContainerExecutorBuilder
 from da4vid.gpus.cuda import CudaDeviceManager
-from da4vid.pipeline.steps import PipelineException
 
 
 class CARBonAraContainer(BaseContainer):
@@ -14,24 +13,18 @@ class CARBonAraContainer(BaseContainer):
   SAMPLING_MAX = 'max'
   SAMPLING_SAMPLED = 'sampled'
 
-  INPUT_DIR = '/data/inputs'
-  OUTPUT_DIR = '/data/outputs'
+  CONTAINER_INPUT_DIR = '/data/inputs'
+  CONTAINER_OUTPUT_DIR = '/data/outputs'
 
-  def __init__(self, input_dir: str, output_dir: str, client: docker.DockerClient,
-               gpu_manager: CudaDeviceManager, num_sequences: int, imprint_ratio: float = .5,
+  def __init__(self, builder: ContainerExecutorBuilder, gpu_manager: CudaDeviceManager,
+               input_dir: str, output_dir: str, num_sequences: int, imprint_ratio: float = .5,
                sampling_method: str = SAMPLING_SAMPLED, known_chains: List[str] | None = None,
                known_positions: List[int] | None = None, unknown_positions: List[int] | None = None,
                ignored_amino_acids: List[str] | None = None, ignore_het_atm: bool = False,
-               ignore_water: bool = False, image: str = DEFAULT_IMAGE, out_logfile: str = None,
+               ignore_water: bool = False, out_logfile: str = None,
                err_logfile: str = None):
     super().__init__(
-      image=image,
-      entrypoint='/bin/bash',
-      volumes={
-        input_dir: self.INPUT_DIR,
-        output_dir: self.OUTPUT_DIR
-      },
-      client=client,
+      builder=builder,
       gpu_manager=gpu_manager
     )
     self.input_dir = input_dir
@@ -54,6 +47,10 @@ class CARBonAraContainer(BaseContainer):
     self.__unknown_positions_str = None
 
   def run(self) -> bool:
+    self.builder.set_logs(self.out_logfile, self.err_logfile).set_volumes({
+      self.input_dir: self.CONTAINER_INPUT_DIR,
+      self.output_dir: self.CONTAINER_OUTPUT_DIR
+    }).set_device(self.gpu_manager.next_device())
     self.__ignored_amino_acids_str = '' if self.ignored_amino_acids is None else (
         '--ignored_amino_acids "' + ','.join(self.ignored_amino_acids) + '"')
     self.__known_chains_str = '' if self.known_chains is None else (
@@ -62,16 +59,15 @@ class CARBonAraContainer(BaseContainer):
         '--known_positions "' + ','.join([str(p) for p in self.known_positions]) + '"')
     self.__unknown_positions_str = '' if self.unknown_positions is None else (
         '--unknown_positions "' + ','.join([str(p) for p in self.unknown_positions]) + '"')
-    with ContainerLogs(self.out_logfile, self.err_logfile) as logs:
+    with self.builder.build() as executor:
+      logging.info(f'[HOST] Executing CARBonAra on {executor.device().name}')
       res = True
-      container, device = super()._create_container()
       for f in os.listdir(self.input_dir):
         if f.endswith('.pdb'):
-          res &= super()._execute_command(container, self.__get_command_for_backbone(f),
-                                          output_log=logs.out, error_log=logs.err)
+          res = executor.execute(self.__get_command_for_backbone(f))
           if not res:
             break
-      super()._stop_container(container)
+      executor.execute(f'/usr/bin/chmod 777 --recursive {CARBonAraContainer.CONTAINER_OUTPUT_DIR}')
       return res
 
   def __get_command_for_backbone(self, backbone_basename: str) -> str:
@@ -85,4 +81,4 @@ class CARBonAraContainer(BaseContainer):
             f'{self.__ignored_amino_acids_str} '
             f'{f"--ignore_hetatm {self.ignore_het_atm} " if self.ignore_het_atm else ""}'
             f'{f"--ignore_water {self.ignore_water} " if self.ignore_water else ""}'
-            f'{os.path.join(self.INPUT_DIR, backbone_basename)} {self.OUTPUT_DIR}')
+            f'{os.path.join(self.CONTAINER_INPUT_DIR, backbone_basename)} {self.CONTAINER_OUTPUT_DIR}')

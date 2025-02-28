@@ -1,13 +1,11 @@
+import logging
 import os
 import shutil
-import sys
-from typing import Tuple
 
-import docker
-from docker.client import DockerClient
 from typing_extensions import Self
 
-from da4vid.docker.base import BaseContainer, ContainerLogs
+from da4vid.containers.base import BaseContainer
+from da4vid.containers.executor import ContainerExecutorBuilder
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.model.proteins import Protein, Chain, Epitope
 
@@ -228,38 +226,30 @@ class RFdiffusionContainer(BaseContainer):
   MODELS_FOLDER = '/app/RFdiffusion/models'
   INPUT_DIR = '/app/RFdiffusion/inputs'
   OUTPUT_DIR = '/app/RFdiffusion/outputs'
+  SCHEDULE_DIR = '/app/RFdiffusion/outputs/schedule'
 
-  def __init__(self, model_dir: str, output_dir: str, input_pdb: str, client: docker.DockerClient,
-               gpu_manager: CudaDeviceManager, contig_map: RFdiffusionContigMap, input_dir: str = None,
-               num_designs: int = 3, diffuser_T: int = 50, partial_T: int = 20,
-               potentials: RFdiffusionPotentials = None, image: str = DEFAULT_IMAGE,
-               out_logfile: str = None, err_logfile: str = None):
+  def __init__(self, builder: ContainerExecutorBuilder, gpu_manager: CudaDeviceManager,
+               model_dir: str, output_dir: str, input_pdb: str, contig_map: RFdiffusionContigMap,
+               input_dir: str = None, num_designs: int = 3, diffuser_T: int = 50, partial_T: int = 20,
+               potentials: RFdiffusionPotentials = None, out_logfile: str = None, err_logfile: str = None):
     """
     Creates a new instance of this container, without starting it.
+    :param builder: The container executor builder used to build the execution container
+    :param gpu_manager: The CUDA device manager object to obtain GPUS
     :param model_dir: Directory where RFdiffusion model weights are stored
     :param output_dir: The output folder diffusions
     :param input_pdb: The PDB input to diffuse
-    :param client: The docker client used to create container
-    :param gpu_manager: The CUDA device manager object to obtain GPUS
     :param contig_map: The map with the contigs
     :param input_dir: The input directory used by the container
     :param num_designs: The number of output diffusions
     :param diffuser_T: Timesteps used for the diffusion. It should be > 15
     :param partial_T: Timesteps used if partial diffusion is specified in contig map
     :param potentials: The potential object used to bias diffusion
-    :param image: The image used to run the container. Defaults to 'da4vid/rfdiffusion:latest'
     :param out_logfile: The path to which container STDOUT will be written. If None, host STDOUT is used
     :param err_logfile: The path to which container STDERR will be written. If None, host STDERR is used
     """
     super().__init__(
-      image=image,
-      entrypoint='/bin/bash',
-      volumes={
-        model_dir: RFdiffusionContainer.MODELS_FOLDER,
-        input_dir: RFdiffusionContainer.INPUT_DIR,
-        output_dir: RFdiffusionContainer.OUTPUT_DIR
-      },
-      client=client,
+      builder=builder,
       gpu_manager=gpu_manager
     )
     self.model_dir = model_dir
@@ -280,11 +270,19 @@ class RFdiffusionContainer(BaseContainer):
     # Moving input PDB to inputs folder if needed
     if self.input_dir != os.path.dirname(self.input_pdb):
       shutil.copy2(self.input_pdb, self.input_dir)
-    self.commands = [self.__create_command()]
-    # Modifying permissions of created files
-    self.commands.append(f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}')
-    with ContainerLogs(self.out_logfile, self.err_logfile) as logs:
-      return super()._run_container(logs.out, logs.err)
+    # Setting the builder
+    self.builder.set_logs(out_log_stream=self.out_logfile, err_log_stream=self.err_logfile)
+    self.builder.set_device(self.gpu_manager.next_device()).set_volumes({
+      f'{self.input_dir}': self.INPUT_DIR,
+      f'{self.model_dir}': self.MODELS_FOLDER,
+      f'{self.output_dir}': self.OUTPUT_DIR
+    })
+    with self.builder.build() as executor:
+      logging.info(f'[HOST] executing RFdiffusion on {executor.device().name}')
+      res = executor.execute(self.__create_command())
+      # Executing chown in any case
+      executor.execute(f'/usr/bin/chmod 0777 --recursive {self.OUTPUT_DIR}')
+    return res
 
   def __create_command(self) -> str:
     cmd = f'python {RFdiffusionContainer.SCRIPT_LOCATION}'
@@ -299,13 +297,16 @@ class RFdiffusionContainer(BaseContainer):
       'inference.model_directory_path': RFdiffusionContainer.MODELS_FOLDER,
       'inference.num_designs': self.num_designs,
       'diffuser.T': self.diffuser_T,
-      'contigmap.contigs': self.contig_map.contigs_to_string()
+      'contigmap.contigs': self.contig_map.contigs_to_string(),
+      'inference.schedule_directory_path': self.SCHEDULE_DIR
     }
     if self.contig_map.partial:  # Partial diffusion
       args['contigmap.provide_seq'] = self.contig_map.provide_seq_to_string()
       args['diffuser.partial_T'] = self.partial_T
     if self.potentials is not None:
       args['potentials.guiding_potentials'] = f"'{self.potentials.potentials_to_string()}'"
-      args['potentials.guide_scale'] = self.potentials.guide_scale
+      args['potentials.guide_scale'] = f'{self.potentials.guide_scale}'
       args['potentials.guide_decay'] = f'"{self.potentials.guide_decay}"'
-    return ' '.join([cmd, *[f'{key}={value}' for key, value in args.items()]])
+    cmd = ' '.join([cmd, *[f'{key}={value}' for key, value in args.items()]])
+    logging.debug(f'[HOST] Executing command: {cmd}')
+    return cmd
