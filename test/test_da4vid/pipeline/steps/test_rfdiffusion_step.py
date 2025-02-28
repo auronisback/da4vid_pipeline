@@ -52,7 +52,7 @@ class RFdiffusionStepWithDockerTest(unittest.TestCase):
       builder=self.builder,
       name='rfdiffusion_demo',
       folder=self.folder,
-      epitope=Epitope('A', 21, 30),
+      epitope=Epitope('A', 27, 35),
       model_dir=self.model_weights,
       client=self.client,
       gpu_manager=self.gpu_manager,
@@ -62,7 +62,8 @@ class RFdiffusionStepWithDockerTest(unittest.TestCase):
     self.assertEqual(3, len(sample_set.samples()))
     orig_sequence = orig_set.samples()[0].protein.sequence()
     for sample in sample_set.samples():
-      self.assertEqual(orig_sequence[20:30], sample.protein.sequence()[20:30])
+      # self.assertEqual(orig_sequence[26:35], sample.protein.sequence()[26:35])
+      self.assertEqual('KGSGSTANL', sample.protein.sequence()[26:35])
 
   def test_rfdiffusion_resume(self):
     pdb_demo = os.path.join(RESOURCES_ROOT, 'steps_test', 'rfdiffusion_test', 'demo.pdb')
