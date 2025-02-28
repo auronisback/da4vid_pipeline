@@ -3,77 +3,79 @@ import os
 import threading
 from typing import List
 
-import docker
-
-from da4vid.docker.base import BaseContainer
+from da4vid.containers.base import BaseContainer
+from da4vid.containers.executor import ContainerExecutorBuilder, ContainerExecutor
 from da4vid.gpus.cuda import CudaDeviceManager
 
 
 class ColabFoldContainer(BaseContainer):
   DEFAULT_IMAGE = 'da4vid/colabfold:latest'
 
-  MODELS_FOLDER = '/colabfold/weights'
-  INPUT_DIR = '/colabfold/inputs'
-  OUTPUT_DIR = '/colabfold/outputs'
+  CONTAINER_MODELS_DIR = '/colabfold/weights'
+  CONTAINER_INPUT_DIR = '/colabfold/inputs'
+  CONTAINER_OUTPUT_DIR = '/colabfold/outputs'
+
+  # Scripts and commands
   __COPY_MSA_SCRIPT = '/colabfold/scripts/copy_msa.py'
   __COLABFOLD_BATCH_COMMAND = '/usr/local/envs/colabfold/bin/colabfold_batch'
 
+  # Default API URL
   COLABFOLD_API_URL = 'https://api.colabfold.com'
+
+  # Available ColabFold models
   MODEL_NAMES = ['auto', 'alphafold2', 'alphafold2_ptm,alphafold2_multimer_v1', 'alphafold2_multimer_v2',
                  'alphafold2_multimer_v3', 'deepfold_v1']
 
-  def __init__(self, model_dir: str, input_dir: str, output_dir: str, client: docker.DockerClient,
-               gpu_manager: CudaDeviceManager, num_recycle: int = 5, zip_outputs: bool = False,
-               model_name: str = MODEL_NAMES[0], num_models: int = 5,
+  def __init__(self, builder: ContainerExecutorBuilder, gpu_manager: CudaDeviceManager,
+               model_dir: str, input_dir: str, output_dir: str, num_recycle: int = 5,
+               zip_outputs: bool = False, model_name: str = MODEL_NAMES[0], num_models: int = 5,
                msa_host_url: str = COLABFOLD_API_URL, max_parallel: int = 1,
-               image: str = DEFAULT_IMAGE, out_logfile: str = None, err_logfile: str = None):
-    super().__init__(
-      image=image,
-      entrypoint='/bin/bash',
-      volumes={
-        model_dir: ColabFoldContainer.MODELS_FOLDER,
-        input_dir: ColabFoldContainer.INPUT_DIR,
-        output_dir: ColabFoldContainer.OUTPUT_DIR
-      },
-      client=client,
-      gpu_manager=gpu_manager
-    )
-    self.num_recycle = num_recycle
-    self.zip_outputs = zip_outputs
+               out_logfile: str = None, err_logfile: str = None):
+    super().__init__(builder, gpu_manager)
     # Checking valid model
     if model_name not in ColabFoldContainer.MODEL_NAMES:
       raise ValueError(f'given model "{model_name}" is invalid '
                        f'(choices: {", ".join(ColabFoldContainer.MODEL_NAMES)})')
     self.input_dir = input_dir
     self.output_dir = output_dir
+    self.model_dir = model_dir
     self.model_name = model_name
     self.num_models = num_models
+    self.num_recycle = num_recycle
+    self.zip_outputs = zip_outputs
+    self.out_logfile = out_logfile
+    self.err_logfile = err_logfile
     # Initializing list of MSA endpoint URLs
     self.msa_host_url = msa_host_url
     # Setting number of max parallel jobs
     self.max_parallel = max_parallel
 
   def run(self) -> bool:
+    self.builder.set_volumes({
+      self.model_dir: ColabFoldContainer.CONTAINER_MODELS_DIR,
+      self.input_dir: ColabFoldContainer.CONTAINER_INPUT_DIR,
+      self.output_dir: ColabFoldContainer.CONTAINER_OUTPUT_DIR
+    })
     res = True
+    containers = self.__build_containers()
     chunks = self.__get_fasta_chunks()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel) as executor:
-      futures = [executor.submit(self.__create_and_execute_container, fasta_basenames=chunk)
-                 for i, chunk in enumerate(chunks)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_parallel) as tpe:
+      futures = [tpe.submit(self.__create_and_execute_container, container=container, fasta_basenames=chunk)
+                 for container, chunk in zip(containers, chunks)]
       for future in concurrent.futures.as_completed(futures):
         res = future.result()
         if not res:
           break
     return res
 
-  def __create_and_execute_container(self, fasta_basenames: List[str]) -> bool:
+  def __create_and_execute_container(self, container: ContainerExecutor, fasta_basenames: List[str]) -> bool:
     if not fasta_basenames:  # Nothing to do if no FASTA file has to be evaluated
       return True
-    container, device = super()._create_container()
-    print(f'[{threading.current_thread().name}] Running predictions for {fasta_basenames} on {device.name}')
-    res = self.__run_on_fasta_list(fasta_basenames, container)
-    res &= super()._execute_command(container,
-                                    f'/usr/bin/chmod 777 --recursive {ColabFoldContainer.OUTPUT_DIR}')
-    super()._stop_container(container)
+    with container as executor:
+      print(f'[HOST {threading.current_thread().name}] Running predictions '
+            f'for {fasta_basenames} on {executor.device().name}')
+      res = self.__run_on_fasta_list(fasta_basenames, container)
+      res &= executor.execute(f'/usr/bin/chmod 777 --recursive {ColabFoldContainer.CONTAINER_OUTPUT_DIR}')
     return res
 
   def __run_on_fasta_list(self, fasta_basenames: List[str], container) -> bool:
@@ -105,7 +107,7 @@ class ColabFoldContainer(BaseContainer):
       self.__prediction_command(f),
     ]
     for command in commands:
-      res &= super()._execute_command(container, command)
+      res &= container.execute(command)
       if not res:
         break
     return res
@@ -135,7 +137,7 @@ class ColabFoldContainer(BaseContainer):
     input_fasta = self.__get_input_fasta(f)
     output_folder = self.__get_output_folder_for_fasta(f)
     return (f'{self.__COLABFOLD_BATCH_COMMAND} '
-            f'--data {self.MODELS_FOLDER} '
+            f'--data {self.CONTAINER_MODELS_DIR} '
             f'--model-type {self.model_name} '
             f'--num-recycle {self.num_recycle} '
             f'--num-models {self.num_models} '
@@ -147,10 +149,20 @@ class ColabFoldContainer(BaseContainer):
     return f'/usr/bin/rm {self.__get_tmp_msa_fasta_path(f)}'
 
   def __get_input_fasta(self, f: str) -> str:
-    return os.path.join(self.INPUT_DIR, f)
+    return os.path.join(self.CONTAINER_INPUT_DIR, f)
 
   def __get_output_folder_for_fasta(self, f: str) -> str:
-    return os.path.join(self.OUTPUT_DIR, '.'.join(f.split('.')[:-1]))
+    return os.path.join(self.CONTAINER_OUTPUT_DIR, '.'.join(f.split('.')[:-1]))
 
   def __get_tmp_msa_fasta_path(self, f: str) -> str:
-    return os.path.join(self.INPUT_DIR, f'msa_{f}')
+    return os.path.join(self.CONTAINER_INPUT_DIR, f'msa_{f}')
+
+  def __build_containers(self) -> List[ContainerExecutor]:
+    containers = []
+    for i in range(self.max_parallel):
+      self.builder.set_logs(
+        out_log_stream=f'{self.out_logfile}.{i}' if self.out_logfile else None,
+        err_log_stream=f'{self.err_logfile}.{i}' if self.err_logfile else None,
+      ).set_device(self.gpu_manager.next_device())
+      containers.append(self.builder.build())
+    return containers

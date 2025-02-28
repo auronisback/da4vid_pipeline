@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import sys
@@ -5,19 +6,19 @@ from typing import List
 
 from tqdm import tqdm
 
-from da4vid.docker.carbonara import CARBonAraContainer
-from da4vid.docker.pmpnn import ProteinMPNNContainer
-from da4vid.docker.rfdiffusion import RFdiffusionContainer, RFdiffusionPotentials, RFdiffusionContigMap
+from da4vid.containers.carbonara import CARBonAraContainer
+from da4vid.containers.pmpnn import ProteinMPNNContainer
+from da4vid.containers.rfdiffusion import RFdiffusionContainer, RFdiffusionPotentials, RFdiffusionContigMap
 from da4vid.filters import cluster_by_ss, filter_by_rog
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_pdb_folder, read_protein_mpnn_fasta
 from da4vid.io.fasta_io import write_fasta, read_fasta
 from da4vid.model.proteins import Protein, Epitope
 from da4vid.model.samples import SampleSet, Sample, Sequence
-from da4vid.pipeline.steps import PipelineStep, DockerStep, PipelineException
+from da4vid.pipeline.steps import PipelineStep, ContainerizedStep, PipelineException
 
 
-class RFdiffusionStep(DockerStep):
+class RFdiffusionStep(ContainerizedStep):
   """
   Abstracts a step of RFdiffusion in the pipeline.
   """
@@ -48,20 +49,17 @@ class RFdiffusionStep(DockerStep):
               f'- num_designs: {self.num_designs}\n - partial_T: {self.partial_T}\n '
               f'- contacts_threshold: {self.contacts_threshold}\n - rog_potential: {self.rog_potential}\n')
 
-  def __init__(self, epitope: Epitope, model_dir: str,
-               gpu_manager: CudaDeviceManager, config: RFdiffusionConfig, **kwargs):
+  def __init__(self, epitope: Epitope, model_dir: str, config: RFdiffusionConfig, **kwargs):
     """
     Creates a generation step of RFdiffusion running in a container.
     :param epitope: The epitope around which diffuse the scaffold
     :param model_dir: The directory in which RFdiffusion weights are stored
     :param client: The docker client used to run RFdiffusion container
-    :param gpu_manager: The CUDA device manager used to assign GPUs
-    :param kwargs: Other parameters used to create the step, such as name and folder
+    :param kwargs: Other parameters used to create the step, such as builder, name and folder
     """
     super().__init__(**kwargs)
     self.epitope = epitope
     self.model_dir = model_dir
-    self.gpu_manger = gpu_manager
     self.config = config
     self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
@@ -77,13 +75,13 @@ class RFdiffusionStep(DockerStep):
     # Creating input and output folders if it not exist
     self.__create_folders()
     # Running the container
-    print('Starting RFdiffusion container with parameters:')
-    print(f' - protein PDB file: {sample.filepath}')
-    print(f' - epitope: {self.epitope}')
-    print(f' - number of designs: {self.config.num_designs}')
-    print(f' - partial T: {self.config.partial_T}')
-    print(f' - contact threshold: {self.config.contacts_threshold}')
-    print(f' - RoG potential: {self.config.rog_potential}')
+    logging.info('Starting RFdiffusion container with parameters:')
+    logging.info(f' - protein PDB file: {sample.filepath}')
+    logging.info(f' - epitope: {self.epitope}')
+    logging.info(f' - number of designs: {self.config.num_designs}')
+    logging.info(f' - partial T: {self.config.partial_T}')
+    logging.info(f' - contact threshold: {self.config.contacts_threshold}')
+    logging.info(f' - RoG potential: {self.config.rog_potential}')
     container = self.__create_container(sample)
     if not container.run():
       raise PipelineException('RFdiffusion step failed')
@@ -96,7 +94,7 @@ class RFdiffusionStep(DockerStep):
   @staticmethod
   def __check_params(protein):
     if not os.path.isfile(protein.filename):
-      raise FileNotFoundError(f'input pdb not found: {protein.filename}')
+      raise FileNotFoundError(f'Input pdb not found: {protein.filename}')
 
   def __create_container(self, sample: Sample) -> RFdiffusionContainer:
     """
@@ -113,11 +111,11 @@ class RFdiffusionStep(DockerStep):
         potentials.add_rog(self.config.rog_potential)
     shutil.copy2(sample.filepath, self.input_dir)
     return RFdiffusionContainer(
+      builder=self.builder, gpu_manager=self.gpu_manager,
       model_dir=self.model_dir, input_dir=self.input_dir, output_dir=self.output_dir,
       input_pdb=sample.filepath, num_designs=self.config.num_designs, partial_T=self.config.partial_T,
       contig_map=RFdiffusionContigMap.partial_diffusion_around_epitope(sample.protein, self.epitope),
-      potentials=potentials, client=self.client, gpu_manager=self.gpu_manger,
-      out_logfile=self.out_logfile, err_logfile=self.err_logfile
+      potentials=potentials, out_logfile=self.out_logfile, err_logfile=self.err_logfile
     )
 
   def __create_folders(self) -> None:
@@ -174,22 +172,22 @@ class BackboneFilteringStep(PipelineStep):
     Executes the filtering and returns the filtered protein objects.
     :return: The sample set with the filtered proteins
     """
-    print('Filtering generated backbones by SS and RoG')
+    logging.info('Filtering generated backbones by SS and RoG')
     clustered_ss = cluster_by_ss([s.protein for s in sample_set.samples()],
                                  threshold=self.ss_threshold, device=self.device)
-    print(f'Found {sum([len(v) for v in clustered_ss.values()])} proteins with SS number >= {self.ss_threshold}:')
-    print('  SS: number ')
+    logging.info(f'Found {sum([len(v) for v in clustered_ss.values()])} proteins with SS number >= {self.ss_threshold}:')
+    logging.info('  SS: number ')
     for k in clustered_ss.keys():
-      print(f'  {k}: {len(clustered_ss[k])}')
+      logging.info(f'  {k}: {len(clustered_ss[k])}')
     # Retaining the 10 smallest proteins for each cluster by filtering via RoG (decreasing)
     filtered_proteins = []
     for k in tqdm(clustered_ss.keys(), file=sys.stdout):
       filtered_proteins += filter_by_rog(clustered_ss[k], cutoff=self.rog_cutoff,
                                          percentage=self.rog_percentage, device=self.device)
-    print(f'Filtered {len(filtered_proteins)} proteins by RoG with '
+    logging.info(f'Filtered {len(filtered_proteins)} proteins by RoG with '
           f'cutoff {self.rog_cutoff}{"%" if self.rog_percentage else ""}:')
     for p in filtered_proteins:
-      print(f'  {p.name}: {p.get_prop("rog").item():.3f} A')
+      logging.info(f'  {p.name}: {p.get_prop("rog").item():.3f} A')
     # Copying the filtered proteins into the output location
     filtered_set = SampleSet()
     filtered_set.add_samples([sample_set.get_sample_by_name(p.name) for p in filtered_proteins])
@@ -216,7 +214,7 @@ class BackboneFilteringStep(PipelineStep):
     return self.output_dir
 
 
-class ProteinMPNNStep(DockerStep):
+class ProteinMPNNStep(ContainerizedStep):
   """
   Abstracts a step of sequence sampling with ProteinMPNN.
   """
@@ -238,7 +236,7 @@ class ProteinMPNNStep(DockerStep):
                          value should be a divisor of seqs_per_target value, otherwise
                          the actual number of output sequences is the multiple of
                          batch size closest to seqs_per_target
-      :param use_soluble_model: Flag checking whether use soluble model weights. Defaults to False
+      :param use_soluble_model: Flag checking whether to use soluble model weights. Defaults to False
       :raise ValueError: If batch_size is greater than seqs_per_target, as in this
                          case no sequence will be generated
       """
@@ -258,7 +256,7 @@ class ProteinMPNNStep(DockerStep):
               f' - batch_size: {self.batch_size}\n'
               f' - use_soluble_model: {self.use_soluble_model}\n')
 
-  def __init__(self, epitope: Epitope, gpu_manager: CudaDeviceManager, config: ProteinMPNNConfig, **kwargs):
+  def __init__(self, epitope: Epitope, config: ProteinMPNNConfig, **kwargs):
     """
     Creates a ProteinMPNN step.
     :param epitope: The epitope which should be held fixed
@@ -270,10 +268,9 @@ class ProteinMPNNStep(DockerStep):
     self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
     self.epitope = epitope
-    self.gpu_manager = gpu_manager
     self.config = config
     self.container = ProteinMPNNContainer(
-      image=self.image,
+      builder=self.builder,
       input_dir=self.input_dir,
       output_dir=self.output_dir,
       seqs_per_target=self.config.seqs_per_target,
@@ -281,7 +278,6 @@ class ProteinMPNNStep(DockerStep):
       backbone_noise=self.config.backbone_noise,
       use_soluble_model=self.config.use_soluble_model,
       batch_size=self.config.batch_size,  # TODO: make a check in order to avoid losing sequences
-      client=self.client,
       gpu_manager=self.gpu_manager
     )
     self.container.add_fixed_chain(
@@ -295,13 +291,13 @@ class ProteinMPNNStep(DockerStep):
     :return: A sample set with the generated sequences subdivided by their
              original samples
     """
-    print('Running ProteinMPNN on filtered backbones with parameters:')
-    print(f' - input backbones: {self.input_dir}')
-    print(f' - output folder: {self.output_dir}')
-    print(f' - sequences per structure: {self.config.seqs_per_target}')
-    print(f' - sampling temperature: {self.config.sampling_temp}')
-    print(f' - backbone noise: {self.config.backbone_noise}')
-    print(f' - batch size: {self.config.batch_size}')
+    logging.info('Running ProteinMPNN on filtered backbones with parameters:')
+    logging.info(f' - input backbones: {self.input_dir}')
+    logging.info(f' - output folder: {self.output_dir}')
+    logging.info(f' - sequences per structure: {self.config.seqs_per_target}')
+    logging.info(f' - sampling temperature: {self.config.sampling_temp}')
+    logging.info(f' - backbone noise: {self.config.backbone_noise}')
+    logging.info(f' - batch size: {self.config.batch_size}')
     # Creating output and input dir if not existing
     os.makedirs(self.input_dir, exist_ok=True)
     os.makedirs(self.output_dir, exist_ok=True)
@@ -313,7 +309,7 @@ class ProteinMPNNStep(DockerStep):
     if not self.container.run():
       raise PipelineException('ProteinMPNN step failed')
     # Creating the output set of samples
-    print('Loading sequences from FASTA')
+    logging.info('[HOST] Loading sequences from FASTA')
     for sample in tqdm(sample_set.samples(), file=sys.stdout):
       fasta_filepath = '.'.join(os.path.basename(sample.filepath).split('.')[:-1]) + '.fa'
       proteins = self.__extract_proteins_from_fasta(os.path.join(
@@ -378,7 +374,7 @@ class ProteinMPNNStep(DockerStep):
     return self.output_dir
 
 
-class CARBonAraStep(DockerStep):
+class CARBonAraStep(ContainerizedStep):
   class CARBonAraConfig:
 
     def __init__(self, num_sequences: int, imprint_ratio: float = .5,
@@ -421,22 +417,20 @@ class CARBonAraStep(DockerStep):
               f' - ignore_het_atm: {self.ignore_het_atm}\n'
               f' - ignore_water: {self.ignore_water}')
 
-  def __init__(self, epitope: Epitope, gpu_manager: CudaDeviceManager, config: CARBonAraConfig, **kwargs):
+  def __init__(self, epitope: Epitope, config: CARBonAraConfig, **kwargs):
     super().__init__(**kwargs)
     self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
     self.epitope = epitope
-    self.gpu_manager = gpu_manager
     self.config = config
     self.container = CARBonAraContainer(
-      image=self.image,
+      builder=self.builder,
       input_dir=self.input_dir,
       output_dir=self.output_dir,
       num_sequences=self.config.num_sequences,
       imprint_ratio=self.config.imprint_ratio,
       sampling_method=self.config.sampling_method,
       known_positions=self.__known_positions_by_epitope(),
-      client=self.client,
       gpu_manager=self.gpu_manager
     )
 

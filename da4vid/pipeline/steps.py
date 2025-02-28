@@ -2,9 +2,10 @@ import abc
 import os.path
 from typing import List, TypeVar, Callable, Any
 
-import docker
 from pathvalidate import sanitize_filename
 
+from da4vid.containers.executor import ContainerExecutorBuilder
+from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.model.proteins import Epitope
 from da4vid.model.samples import SampleSet, Sample
 
@@ -26,7 +27,7 @@ class PipelineStep(abc.ABC):
   Abstracts a generic step in the pipeline.
   """
 
-  def __init__(self, name: str, parent=None, folder: str | None = None, log_on_file: bool = True,
+  def __init__(self, name: str, parent=None, folder: str | None = None, log_on_file: bool = False,
                pre_step_fn: List[Callable[[T, Any], None]] | Callable[[T, Any], None] = None,
                post_step_fn: List[Callable[[T, Any], None]] | Callable[[T, Any], None] = None,
                failed_step_fn: List[Callable[[T, PipelineException, Any], None]] |
@@ -324,22 +325,22 @@ class PipelineRootStep(CompositeStep):
     return super()._resume(sample_set)
 
 
-class DockerStep(PipelineStep, abc.ABC):
+class ContainerizedStep(PipelineStep, abc.ABC):
   """
   Abstracts a step in the pipeline which is executed as a Docker container.
   """
 
-  def __init__(self, client: docker.DockerClient, image: str, **kwargs):
+  def __init__(self, builder: ContainerExecutorBuilder, gpu_manager: CudaDeviceManager, **kwargs):
     """
     Initializes parameters common to steps executing operations in Docker containers.
-    :param client: The client instance used to instantiate containers
-    :param image: The image used by the containers in the step
+    :param builder: The builder used to create the container execution context
+    :param gpu_manager: The GPU manager used to assign GPU resources to containers
     :param kwargs: Other common arguments to pipeline steps, such as
                    name and folder
     """
     super().__init__(**kwargs)
-    self.client = client
-    self.image = image
+    self.builder = builder
+    self.gpu_manager = gpu_manager
 
 
 class FoldCollectionStep(PipelineStep):

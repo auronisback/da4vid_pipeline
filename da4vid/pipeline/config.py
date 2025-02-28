@@ -1,17 +1,19 @@
 import os
-import sys
-from typing import List, Dict, Any, IO
+from typing import List, Dict, Any
 
 import docker
 import dotenv
+import spython.main
 import yaml
 
-from da4vid.docker.carbonara import CARBonAraContainer
-from da4vid.docker.colabfold import ColabFoldContainer
-from da4vid.docker.masif import MasifContainer
-from da4vid.docker.omegafold import OmegaFoldContainer
-from da4vid.docker.pmpnn import ProteinMPNNContainer
-from da4vid.docker.rfdiffusion import RFdiffusionContainer
+from da4vid.containers.carbonara import CARBonAraContainer
+from da4vid.containers.colabfold import ColabFoldContainer
+from da4vid.containers.docker import DockerExecutorBuilder
+from da4vid.containers.masif import MasifContainer
+from da4vid.containers.omegafold import OmegaFoldContainer
+from da4vid.containers.pmpnn import ProteinMPNNContainer
+from da4vid.containers.rfdiffusion import RFdiffusionContainer
+from da4vid.containers.singularity import SingularityExecutorBuilder
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_from_pdb
 from da4vid.model.proteins import Protein, Epitope
@@ -22,59 +24,160 @@ from da4vid.pipeline.steps import CompositeStep, PipelineStep, PipelineRootStep,
 from da4vid.pipeline.validation import OmegaFoldStep, SequenceFilteringStep, ColabFoldStep
 
 
+class Da4vidConfigurationError(Exception):
+  def __init__(self, errors: List[str]):
+    super().__init__()
+    self.errors = errors
+
+  def __str__(self):
+    return '; '.join(self.errors)
+
+
 class StaticConfig:
   """
   Stores the static configuration of the pipeline, such as folders in which models
   are stored, image names and gpu managers.
   """
 
+  class DockerStaticConfig:
+    """
+    Defines the static configuration when Docker backend is used to execute containers.
+    """
+
+    def __init__(self, client: docker.DockerClient, rfdiffusion_image: str, protein_mpnn_image: str,
+                 omegafold_image: str, colabfold_image: str, masif_image: str, carbonara_image: str):
+      """
+      Creates the docker configuration object that stores the static configuration of the pipeline.
+      :param client: The client used to query Docker APIs
+      :param rfdiffusion_image: Tag of the RFdiffusion docker image
+      :param protein_mpnn_image: Tag of the ProteinMPNN docker image
+      :param omegafold_image: Tag of the OmegaFold docker image
+      :param colabfold_image: Tag of the Colabfold docker image
+      :param masif_image: Tag of the MaSIF docker image
+      :param carbonara_image: Tag of the CARBonAra docker image
+      :raise Da4vidConfigurationError: If specified container images are not available on the machine
+      """
+      self.client = client
+      self.rfdiffusion_image = rfdiffusion_image
+      self.protein_mpnn_image = protein_mpnn_image
+      self.omegafold_image = omegafold_image
+      self.colabfold_image = colabfold_image
+      self.masif_image = masif_image
+      self.carbonara_image = carbonara_image
+      # Dictionary for caching images
+      self.__dict = {
+        'rfdiffusion': self.rfdiffusion_image,
+        'protein_mpnn': self.protein_mpnn_image,
+        'omegafold': self.omegafold_image,
+        'colabfold': self.colabfold_image,
+        'masif': self.masif_image,
+        'carbonara': self.carbonara_image,
+      }
+      self.__check_images()
+
+    def get_image_name(self, img_type: str) -> str:
+      return self.__dict.get(img_type, None)
+
+    def __check_images(self) -> None:
+      errors = [f'Image not found: {image}' for image in [self.rfdiffusion_image, self.protein_mpnn_image,
+                                                          self.omegafold_image, self.colabfold_image, self.masif_image]
+                if self.client.images.list(name=image) is None]
+      if errors:
+        raise Da4vidConfigurationError(errors)
+
+    def __str__(self, indent: int = 0):
+      return (f'{" " * indent}Docker Configuration:\n'
+              f'{" " * indent} - RFdiffusion image: {self.rfdiffusion_image}\n'
+              f'{" " * indent} - Protein MPNN image: {self.protein_mpnn_image}\n'
+              f'{" " * indent} - OmegaFold image: {self.omegafold_image}\n'
+              f'{" " * indent} - Colabfold image: {self.colabfold_image}\n'
+              f'{" " * indent} - Masif image: {self.masif_image}\n'
+              f'{" " * indent} - CARBonAra image: {self.carbonara_image}')
+
+  class SingularityStaticConfig:
+    """
+    Defines the static configuration when Singularity backend is used to execute containers.
+    """
+
+    def __init__(self, rfdiffusion_sif: str, protein_mpnn_sif: str, omegafold_sif: str,
+                 colabfold_sif: str, masif_sif: str, carbonara_sif: str):
+      self.rfdiffusion_sif = rfdiffusion_sif
+      self.protein_mpnn_sif = protein_mpnn_sif
+      self.omegafold_sif = omegafold_sif
+      self.colabfold_sif = colabfold_sif
+      self.masif_sif = masif_sif
+      self.carbonara_sif = carbonara_sif
+      # Caching dict
+      self.__dict = {
+        'rfdiffusion': self.rfdiffusion_sif,
+        'protein_mpnn': self.protein_mpnn_sif,
+        'omegafold': self.omegafold_sif,
+        'colabfold': self.colabfold_sif,
+        'masif': self.masif_sif,
+        'carbonara': self.carbonara_sif
+      }
+      self.__check_sif_paths()
+
+    def get_sif_path_from_type(self, img_type: str) -> str:
+      return self.__dict.get(img_type, None)
+
+    def __check_sif_paths(self) -> None:
+      errors = [f'SIF file not found: {sif_path}' for sif_path in self.__dict.values()
+                if not os.path.isfile(sif_path)]
+      if errors:
+        raise Da4vidConfigurationError(errors)
+
+    def __str__(self, indent: int = 0):
+      return (f'{" " * indent}Singularity Configuration:\n'
+              f'{" " * indent} - RFdiffusion SIF: {self.rfdiffusion_sif}\n'
+              f'{" " * indent} - Protein MPNN SIF: {self.protein_mpnn_sif}\n'
+              f'{" " * indent} - OmegaFold SIF: {self.omegafold_sif}\n'
+              f'{" " * indent} - Colabfold SIF: {self.colabfold_sif}\n'
+              f'{" " * indent} - Masif SIF: {self.masif_sif}\n'
+              f'{" " * indent} - CARBonAra SIF: {self.carbonara_sif}')
+
   instance = None
 
-  def __init__(self, client: docker.DockerClient, gpu_manager: CudaDeviceManager,
+  def __init__(self, gpu_manager: CudaDeviceManager,
                rfdiffusion_models_dir: str, omegafold_models_dir: str, colabfold_models_dir: str,
-               rfdiffusion_image: str, protein_mpnn_image: str, omegafold_image: str, colabfold_image: str,
-               masif_image: str, omegafold_max_parallel: int, colabfold_max_parallel: int, carbonara_image: str):
+               omegafold_max_parallel: int, colabfold_max_parallel: int,
+               docker_config: DockerStaticConfig = None, singularity_config: SingularityStaticConfig = None):
     """
     Creates a new instance of static configuration of the pipeline. This should not be invoked
     directly, but an instance should be created using the <em>load_from_yaml</em> static method.
-    :param client: The client used to query Docker APIs
     :param gpu_manager: The CUDA device manager used to assign GPU resources to containers
     :param rfdiffusion_models_dir: Directory where RFdiffusion models are locally stored
     :param omegafold_models_dir: Directory where Omegafold models are locally stored
     :param colabfold_models_dir: Directory where Colabfold models are locally stored
-    :param rfdiffusion_image: Tag of the RFdiffusion docker image
-    :param protein_mpnn_image: Tag of the ProteinMPNN docker image
-    :param omegafold_image: Tag of the OmegaFold docker image
-    :param colabfold_image: Tag of the Colabfold docker image
-    :param masif_image: Tag of the MaSIF docker image
     :param omegafold_max_parallel: Number of parallel instances for OmegaFold containers
     :param colabfold_max_parallel: Number of parallel instances for ColabFold containers
-    :param carbonara_image: Tag of the CARBonAra docker image
-    :raise Da4vidConfigurationError: If images are not available, or models folder are invalid
+    :param docker_config: Configuration if docker has been chosen as container backend
+    :param singularity_config: Configuration if singularity has been chosen as container backend
+    :raise Da4vidConfigurationError: If container backend configuration is invalid, or it is not
+                                     possible to locate folders with models parameter
     """
-    self.client = client
+    if not docker_config and not singularity_config:
+      raise Da4vidConfigurationError(['Container backend not given: one among "docker" and "singularity" needed'])
+    self.docker_configuration = docker_config
+    self.singularity_config = singularity_config
     self.gpu_manager = gpu_manager
     self.rfdiffusion_models_dir = rfdiffusion_models_dir
     self.omegafold_models_dir = omegafold_models_dir
     self.colabfold_models_dir = colabfold_models_dir
-    self.rfdiffusion_image = rfdiffusion_image
-    self.protein_mpnn_image = protein_mpnn_image
-    self.omegafold_image = omegafold_image
-    self.colabfold_image = colabfold_image
-    self.masif_image = masif_image
     self.omegafold_max_parallel = omegafold_max_parallel
     self.colabfold_max_parallel = colabfold_max_parallel
-    self.carbonara_image = carbonara_image
     self.__check_parameters()
+
+  def backend(self) -> str:
+    """
+    Gets the container backend for the pipeline.
+    :return: 'docker' or 'singularity', according to the chosen container execution backend
+    """
+    return 'docker' if self.docker_configuration else 'singularity'
 
   def __check_parameters(self):
     errors = []
-    # Checking images
-    for image in [self.rfdiffusion_image, self.protein_mpnn_image, self.omegafold_image,
-                  self.colabfold_image, self.masif_image]:
-      if not self.client.images.list(filters={'reference': image}):
-        errors.append(f'Image not found: {image}')
-    # Checking directories
+    # Checking model folders
     if self.rfdiffusion_models_dir is None or not os.path.isdir(self.rfdiffusion_models_dir):
       errors.append(f'Invalid RFdiffusion model dir: {self.rfdiffusion_models_dir}')
     if self.omegafold_models_dir is None or not os.path.isdir(self.omegafold_models_dir):
@@ -87,15 +190,7 @@ class StaticConfig:
     if self.colabfold_max_parallel < 1:
       errors.append(f'Invalid number of ColabFold parallel containers: {self.colabfold_max_parallel}')
     if errors:
-      raise self.Da4vidConfigurationError(errors)
-
-  class Da4vidConfigurationError(Exception):
-    def __init__(self, errors: List[str]):
-      super().__init__()
-      self.errors = errors
-
-    def __str__(self):
-      return '; '.join(self.errors)
+      raise Da4vidConfigurationError(errors)
 
   @staticmethod
   def get(env_file: str = None):
@@ -108,33 +203,52 @@ class StaticConfig:
     """
     if not StaticConfig.instance:
       dotenv.load_dotenv(env_file)
+      docker_config = None
+      singularity_config = None
+      backend = os.environ.get('CONTAINER_BACKEND', 'docker')  # Defaults to docker
+      if backend == 'docker':
+        docker_config = StaticConfig.DockerStaticConfig(
+          client=docker.from_env(),
+          rfdiffusion_image=os.environ.get('RFDIFFUSION_IMAGE', RFdiffusionContainer.DEFAULT_IMAGE),
+          protein_mpnn_image=os.environ.get('PROTEIN_MPNN_IMAGE', ProteinMPNNContainer.DEFAULT_IMAGE),
+          omegafold_image=os.environ.get('OMEGAFOLD_IMAGE', OmegaFoldContainer.DEFAULT_IMAGE),
+          colabfold_image=os.environ.get('COLABFOLD_IMAGE', ColabFoldContainer.DEFAULT_IMAGE),
+          masif_image=os.environ.get('MASIF_IMAGE', MasifContainer.DEFAULT_IMAGE),
+          carbonara_image=os.environ.get('CARBONARA_IMAGE', CARBonAraContainer.DEFAULT_IMAGE)
+        )
+      elif backend == 'singularity':
+        singularity_config = StaticConfig.SingularityStaticConfig(
+          rfdiffusion_sif=os.environ.get('RFDIFFUSION_SIF'),
+          protein_mpnn_sif=os.environ.get('PROTEIN_MPNN_SIF'),
+          omegafold_sif=os.environ.get('OMEGAFOLD_SIF'),
+          colabfold_sif=os.environ.get('COLABFOLD_SIF'),
+          masif_sif=os.environ.get('MASIF_SIF'),
+          carbonara_sif=os.environ.get('CARBONARA_SIF'),
+        )  # Todo
+      else:
+        raise Da4vidConfigurationError([f'Unknown backend: {backend}'])
       StaticConfig.instance = StaticConfig(
-        client=docker.from_env(),
         gpu_manager=CudaDeviceManager(),
-        rfdiffusion_image=os.environ.get('RFDIFFUSION_IMAGE', RFdiffusionContainer.DEFAULT_IMAGE),
         rfdiffusion_models_dir=os.environ.get('RFDIFFUSION_MODEL_FOLDER', None),
-        protein_mpnn_image=os.environ.get('PROTEIN_MPNN_FOLDER', ProteinMPNNContainer.DEFAULT_IMAGE),
-        omegafold_image=os.environ.get('OMEGAFOLD_IMAGE', OmegaFoldContainer.DEFAULT_IMAGE),
         omegafold_models_dir=os.environ.get('OMEGAFOLD_MODEL_FOLDER', None),
-        colabfold_image=os.environ.get('COLABFOLD_IMAGE', ColabFoldContainer.DEFAULT_IMAGE),
         colabfold_models_dir=os.environ.get('COLABFOLD_MODEL_FOLDER', None),
-        masif_image=os.environ.get('MASIF_IMAGE', MasifContainer.DEFAULT_IMAGE),
         omegafold_max_parallel=int(os.environ.get('OMEGAFOLD_MAX_PARALLEL', 1)),
         colabfold_max_parallel=int(os.environ.get('COLABFOLD_MAX_PARALLEL', 1)),
-        carbonara_image=os.environ.get('CARBONARA_IMAGE', CARBonAraContainer.DEFAULT_IMAGE)
+        docker_config=docker_config,
+        singularity_config=singularity_config,
       )
     return StaticConfig.instance
 
   def __str__(self):
-    return (f'StaticConfig:'
-            f' - RFdiffusion image: {self.rfdiffusion_image}\n'
-            f' - RFdiffusion models: {self.rfdiffusion_models_dir}\n'
-            f' - ProteinMPNN image: {self.protein_mpnn_image}\n'
-            f' - OmegaFold image: {self.omegafold_image}\n'
-            f' - OmegaFold models: {self.omegafold_models_dir}\n'
-            f' - ColabFold image: {self.colabfold_image}\n'
-            f' - ColabFold models: {self.colabfold_models_dir}\n'
-            f' - MaSIF image: {self.masif_image}\n')
+    s = f'StaticConfig:\n'
+    s += f'  Backend: {self.backend()}\n'
+    if self.backend() == 'docker':
+      s += f'{self.docker_configuration.__str__(2)}\n'
+    else:
+      s += f'{self.singularity_config.__str__(2)}\n'
+    return s + (f' - RFdiffusion models: {self.rfdiffusion_models_dir}\n'
+                f' - OmegaFold models: {self.omegafold_models_dir}\n'
+                f' - ColabFold models: {self.colabfold_models_dir}\n')
 
 
 class PipelineCreator:
@@ -155,6 +269,15 @@ class PipelineCreator:
     with open(yml_config) as f:
       data = yaml.safe_load(f)
       return self.__process_root_element(data, os.path.dirname(yml_config))
+
+  def __get_executor_builder_for_step(self, step_type: str):
+    if self.static_config.backend() == 'docker':
+      return DockerExecutorBuilder().set_client(docker.from_env()).set_image(
+        self.static_config.docker_configuration.get_image_name(step_type.lower()))
+    else:
+      return SingularityExecutorBuilder().set_client(spython.main.get_client()).set_sif_path(
+        self.static_config.singularity_config.get_sif_path_from_type(step_type.lower())
+      )
 
   def __process_root_element(self, el: Dict[str, Any], yml_path: str) -> PipelineRootStep:
     el_name = list(el.keys())[0]
@@ -197,14 +320,14 @@ class PipelineCreator:
     match el_name:
       case 'rfdiffusion':
         return RFdiffusionStep(
+          builder=self.__get_executor_builder_for_step('rfdiffusion').preserve_quotes_in_cmds(['"']),
           name=el.get('name', 'rfdiffusion'),
           parent=parent,
           epitope=root.epitope,
           model_dir=self.static_config.rfdiffusion_models_dir,
-          client=self.static_config.client,
-          image=self.static_config.rfdiffusion_image,
           gpu_manager=self.static_config.gpu_manager,
-          config=RFdiffusionStep.RFdiffusionConfig(**{k: v for k, v in el.items() if k != 'name'})
+          config=RFdiffusionStep.RFdiffusionConfig(**{k: v for k, v in el.items() if k != 'name'}),
+
         )
       case 'backbone_filtering':
         return BackboneFilteringStep(
@@ -214,21 +337,18 @@ class PipelineCreator:
         )
       case 'proteinmpnn':
         return ProteinMPNNStep(
+          builder=self.__get_executor_builder_for_step('protein_mpnn'),
           name=el.get('name', 'proteinmpnn'),
           parent=parent,
           epitope=root.epitope,
-          client=self.static_config.client,
-          image=self.static_config.protein_mpnn_image,
           gpu_manager=self.static_config.gpu_manager,
           config=ProteinMPNNStep.ProteinMPNNConfig(**{k: v for k, v in el.items() if k != 'name'})
         )
-        pass
       case 'omegafold':
         return OmegaFoldStep(
+          builder=self.__get_executor_builder_for_step('omegafold'),
           name=el.get('name', 'omegafold'),
           parent=parent,
-          client=self.static_config.client,
-          image=self.static_config.omegafold_image,
           model_dir=self.static_config.omegafold_models_dir,
           gpu_manager=self.static_config.gpu_manager,
           max_parallel=self.static_config.omegafold_max_parallel,
@@ -243,10 +363,9 @@ class PipelineCreator:
         )
       case 'colabfold':
         return ColabFoldStep(
+          builder=self.__get_executor_builder_for_step('colabfold'),
           name=el.get('name', 'colabfold'),
           parent=parent,
-          client=self.static_config.client,
-          image=self.static_config.colabfold_image,
           gpu_manager=self.static_config.gpu_manager,
           model_dir=self.static_config.colabfold_models_dir,
           max_parallel=self.static_config.colabfold_max_parallel,
@@ -254,10 +373,9 @@ class PipelineCreator:
         )
       case 'masif':
         return MasifStep(
+          builder=self.__get_executor_builder_for_step('masif'),
           name=el.get('name', 'masif'),
           parent=parent,
-          client=self.static_config.client,
-          image=self.static_config.masif_image,
           gpu_manager=self.static_config.gpu_manager
         )
       case 'fold_collection':
@@ -268,10 +386,9 @@ class PipelineCreator:
         )
       case 'carbonara':
         return CARBonAraStep(
+          builder=self.__get_executor_builder_for_step('carbonara'),
           name=el.get('name', 'CARBonAra'),
           parent=parent,
-          image=self.static_config.carbonara_image,
-          client=self.static_config.client,
           gpu_manager=self.static_config.gpu_manager,
           epitope=root.epitope,
           config=CARBonAraStep.CARBonAraConfig(
@@ -279,7 +396,7 @@ class PipelineCreator:
             imprint_ratio=el.get('imprint_ratio', .5),
             sampling_method=el.get('sampling_method', CARBonAraContainer.SAMPLING_SAMPLED),
             ignored_amino_acids=None if 'ignored_amino_acids' not in el else
-                                [aa.strip() for aa in el['ignored_amino_acids'].split(' ')],
+            [aa.strip() for aa in el['ignored_amino_acids'].split(' ')],
             ignore_water=bool(el.get('ignore_water', False)),
             ignore_het_atm=bool(el.get('ignore_het_atm', False))
           )
@@ -300,151 +417,3 @@ class PipelineCreator:
         seen.add(ctx_folder)
       else:
         raise PipelineCreator.PipelineCreationError(f'Two steps have the same context folder: {ctx_folder}')
-
-
-class PipelinePrinter:
-  ELBOW = "└──"
-  PIPE = "│  "
-  TEE = "├──"
-  BLANK = "   "
-
-  def __init__(self, file: IO = sys.stdout):
-    self.file = file
-
-  def print(self, pipeline: PipelineRootStep) -> None:
-    self.__print_root_step(pipeline)
-    for i, step in enumerate(pipeline.steps):
-      self.__print_step(step, header='', last=i == len(pipeline.steps) - 1)
-
-  def __print_root_step(self, pipeline: PipelineRootStep) -> None:
-    print(f'Pipeline: {pipeline.name}', file=self.file)
-    print(f'{self.PIPE}  +  Folder: {pipeline.folder}', file=self.file)
-    ag_prot = pipeline.antigen.protein
-    epi = pipeline.epitope
-    print(f'{self.PIPE}  +  Antigen: {ag_prot.sequence()}', file=self.file)
-    epi_seq = ''
-    for chain in ag_prot.chains:
-      if chain.name == epi.chain:
-        epi_seq += (('-' * epi.start
-                     + chain.sequence()[epi.start:epi.end + 1])
-                    + ('-' * (len(chain.sequence()) - epi.end - 1)))
-    print(f'{self.PIPE}  +  Epitope: {epi_seq}', file=self.file)
-
-  def __print_step(self, step: PipelineStep, header: str, last: bool) -> None:
-    if isinstance(step, CompositeStep):
-      self.__print_composite_step(step, header, last)
-    elif isinstance(step, RFdiffusionStep):
-      self.__print_rfdiffusion_step(step, header, last)
-    elif isinstance(step, BackboneFilteringStep):
-      self.__print_backbone_filtering_step(step, header, last)
-    elif isinstance(step, ProteinMPNNStep):
-      self.__print_protein_mpnn_step(step, header, last)
-    elif isinstance(step, OmegaFoldStep):
-      self.__print_omegafold_step(step, header, last)
-    elif isinstance(step, SequenceFilteringStep):
-      self.__print_sequence_filtering_step(step, header, last)
-    elif isinstance(step, ColabFoldStep):
-      self.__print_colabfold_step(step, header, last)
-    elif isinstance(step, MasifStep):
-      self.__print_masif_step(step, header, last)
-    elif isinstance(step, FoldCollectionStep):
-      self.__print_fold_collection_step(step, header, last)
-    elif isinstance(step, CARBonAraStep):
-      self.__print_carbonara_step(step, header, last)
-    else:
-      print(header, file=self.file)
-
-  def __print_composite_step(self, composite: CompositeStep, header: str, last: bool) -> None:
-    print(f'{header + (self.ELBOW if last else self.TEE)}Composite: {composite.name}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}{self.PIPE}  +  Folder: {composite.get_context_folder()}',
-          file=self.file)
-    for i, step in enumerate(composite.steps):
-      self.__print_step(step, header + (self.BLANK if last else self.PIPE), i == len(composite.steps) - 1)
-
-  def __print_rfdiffusion_step(self, rfdiff_step: RFdiffusionStep, header: str, last: bool) -> None:
-    print(f'{header + (self.ELBOW if last else self.TEE)}RFdiffusion: {rfdiff_step.name}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Docker Image: {rfdiff_step.image}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {rfdiff_step.get_context_folder()}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Number of Designs: {rfdiff_step.config.num_designs}',
-          file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Partial T: {rfdiff_step.config.partial_T}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  RoG Potential R_0: {rfdiff_step.config.rog_potential}',
-          file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Contact threshold: {rfdiff_step.config.contacts_threshold}',
-          file=self.file)
-
-  def __print_backbone_filtering_step(self, bbf_step: BackboneFilteringStep, header: str, last: bool) -> None:
-    print(f'{header + (self.ELBOW if last else self.TEE)}Backbone Filtering: {bbf_step.name}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {bbf_step.get_context_folder()}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Secondary Structure Threshold: {bbf_step.ss_threshold}',
-          file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  RoG Cutoff: '
-          f'{bbf_step.rog_cutoff}{"%" if bbf_step.rog_percentage else ""}',
-          file=self.file)
-
-  def __print_protein_mpnn_step(self, pnn_step: ProteinMPNNStep, header: str, last: bool) -> None:
-    print(f'{header + (self.ELBOW if last else self.TEE)}Protein MPNN: {pnn_step.name}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {pnn_step.get_context_folder()}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Docker Image: {pnn_step.image}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Sequences per target: {pnn_step.config.seqs_per_target}',
-          file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Sampling Temperature: {pnn_step.config.sampling_temp}',
-          file=self.file),
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Backbone Noise: {pnn_step.config.backbone_noise}',
-          file=self.file),
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Batch Size: {pnn_step.config.batch_size}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Soluble Model: {pnn_step.config.use_soluble_model}',
-          file=self.file)
-
-  def __print_omegafold_step(self, of_step: OmegaFoldStep, header: str, last: bool) -> None:
-    print(f'{header + (self.ELBOW if last else self.TEE)}OmegaFold: {of_step.name}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {of_step.get_context_folder()}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Docker Image: {of_step.image}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Parallel Instances: {of_step.max_parallel}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Model: {of_step.config.model_weights}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Number of Recycles: {of_step.config.num_recycles}',
-          file=self.file)
-
-  def __print_sequence_filtering_step(self, sf_step: SequenceFilteringStep, header: str, last: bool) -> None:
-    print(f'{header + (self.ELBOW if last else self.TEE)}Sequence Filtering: {sf_step.name}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {sf_step.get_context_folder()}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Work on Model: {sf_step.model}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  pLDDT Threshold: {sf_step.plddt_threshold}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Number of Samples for pLDDT avg: {sf_step.average_cutoff}',
-          file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  RoG cutoff: {sf_step.rog_cutoff}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Max Number of Samples: {sf_step.max_samples}',
-          file=self.file)
-
-  def __print_colabfold_step(self, cf_step: ColabFoldStep, header: str, last: bool) -> None:
-    print(f'{header + (self.ELBOW if last else self.TEE)}ColabFold: {cf_step.name}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {cf_step.get_context_folder()}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Docker Image: {cf_step.image}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Parallel Instances: {cf_step.max_parallel}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Model: {cf_step.config.model_name}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Number of Recycles: {cf_step.config.num_recycles}',
-          file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Compress Outputs: '
-          f'{"Yes" if cf_step.config.zip_outputs else "No"}', file=self.file)
-
-  def __print_masif_step(self, masif_step: MasifStep, header: str, last: bool) -> None:
-    print(f'{header + (self.ELBOW if last else self.TEE)}MaSIF: {masif_step.name}', file=self.file)
-
-  def __print_fold_collection_step(self, fc_step: FoldCollectionStep, header: str, last: bool) -> None:
-    print(f'{header + (self.ELBOW if last else self.TEE)}FoldCollection', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Model: {fc_step.model}', file=self.file)
-
-  def __print_carbonara_step(self, cb_step: CARBonAraStep, header: str, last: bool):
-    print(f'{header + (self.ELBOW if last else self.TEE)}CARBonAra: {cb_step.name}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {cb_step.get_context_folder()}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Docker Image: {cb_step.image}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Number of Sequences: {cb_step.config.num_sequences}',
-          file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Imprint Ratio: {cb_step.config.imprint_ratio}',
-          file=self.file),
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Ignored Amino-Acids: {cb_step.config.ignored_amino_acids}',
-          file=self.file),
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Ignore Hetero-Atoms: {cb_step.config.ignore_het_atm}',
-          file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Ignore Water: {cb_step.config.ignore_water}',
-          file=self.file)
