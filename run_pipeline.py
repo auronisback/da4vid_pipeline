@@ -3,6 +3,7 @@ Script used to run the pipeline.
 
 :author Francesco Altiero <francesco.altiero@unina.it>
 """
+import logging
 import os.path
 import click
 
@@ -28,7 +29,10 @@ def cli():
               help='Specify the file in which pipeline progress will be saved. Defaults to configuration name.')
 @click.option('--save-time', '-t', type=bool, default=False, is_flag=True,
               help='Specify if times for various pipeline steps should be saved, in CSV format.')
-def execute(configuration, json: bool, show_pipeline: bool, save_progress: str, save_time: bool) -> None:
+@click.option('--verbose', '-v', type=bool, default=False, is_flag=True,
+              help='Logs all information about pipeline execution.')
+def execute(configuration, json: bool, show_pipeline: bool, save_progress: str, save_time: bool,
+            verbose: bool) -> None:
   """
   Executes the DA4VID pipeline specified by a configuration file, in yml or json format.
   \f
@@ -40,12 +44,15 @@ def execute(configuration, json: bool, show_pipeline: bool, save_progress: str, 
                         If not given, a progress file with the same name of the configuration in
                         the same folder will be used
   :param save_time: Flag indicating if pipeline step execution times should be recorded
+  :param verbose: Flag indicating if all information should be logged (on stdout)
   """
   if json:
     raise NotImplementedError("JSON configurations have not been implemented yet! :'(")
   pipeline = PipelineCreator().from_yml(configuration)
   if show_pipeline:
     PipelinePrinter().print(pipeline)
+  if verbose:
+    logging.getLogger().setLevel(logging.INFO)
   if save_progress is None:
     save_progress = __progress_file_from_configuration_path(configuration)
   progress_saver = ProgressManager(save_progress)

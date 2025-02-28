@@ -1,4 +1,5 @@
 import abc
+import logging
 import os.path
 from typing import List, TypeVar, Callable, Any
 
@@ -73,6 +74,7 @@ class PipelineStep(abc.ABC):
     :param sample_set: The input sample set
     :return: The sample set after the step evaluation
     """
+    logging.info(f'[HOST] Executing step {self.full_name()}')
     try:
       for fn in self.__pre_step_fn:
         fn(self, **self.__callable_kwargs)
