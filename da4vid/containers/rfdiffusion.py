@@ -140,7 +140,7 @@ class RFdiffusionContigMap:
     for chain in protein.chains:
       if chain.name == epitope.chain:
         start = offset + epitope.start
-        end = offset + epitope.end + 1
+        end = offset + epitope.end
         return RFdiffusionContigMap(protein).full_diffusion().add_provide_seq(start, end)
       offset += len(chain.residues)
     raise ValueError(f'Epitope chain not found in protein: {epitope.chain}')

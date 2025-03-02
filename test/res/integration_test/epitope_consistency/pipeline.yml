@@ -1,0 +1,16 @@
+epitope_consistency:
+    folder: ./run
+    antigen: ./inputs/antigen.pdb
+    epitope: A26-34
+    steps:
+            -   rfdiffusion:
+                    num_designs: 1
+                    partial_T: 23
+                    contacts_threshold: 5
+                    rog_potential: 12
+            -   proteinmpnn:
+                    seqs_per_target: 20
+                    sampling_temp: .5
+                    backbone_noise: .20
+                    batch_size: 20
+                    use_soluble_model: True
