@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.8.0-base-ubuntu22.04
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
 
 ENV OMEGAFOLD_HOME=/Omegafold
 
@@ -14,7 +14,8 @@ RUN apt-get update \
 
 WORKDIR ${OMEGAFOLD_HOME}
 
-RUN python setup.py install
+RUN pip install numpy==1.26.3 && \
+    pip install -r requirements.txt
 
 CMD ["/bin/bash"]
 

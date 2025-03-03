@@ -1,7 +1,7 @@
 demo pipeline:
     folder: demo_pipeline
     antigen: demo.pdb
-    epitope: A26-34
+    epitope: A27-35
     steps:
     -   iteration 1:
             steps:
