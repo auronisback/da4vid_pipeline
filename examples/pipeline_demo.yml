@@ -31,7 +31,7 @@ demo pipeline:
                             plddt_threshold: 40
                             average_cutoff: 20
                             rog_cutoff: 10
-                            max_samples: 20
+                            max_samples: 200
                     -   colabfold:
                             num_recycles: 3
                             model_name: 'alphafold2'
@@ -41,7 +41,7 @@ demo pipeline:
                             model: 'alphafold2'
                             plddt_threshold: 40
                             average_cutoff: 10
-                            max_samples: 10
+                            max_samples: 80
                     -   fold_collection:
                             model: 'alphafold2'
     -   iteration 2:
@@ -64,7 +64,8 @@ demo pipeline:
                             plddt_threshold: 50
                             average_cutoff: 10
                             rog_cutoff: 10
-                            max_samples: 20
+                            max_samples: 200
+                            max_folds_per_sample: 50
                     -   colabfold:
                             num_recycles: 3
                             model_name: 'alphafold2'
@@ -74,7 +75,8 @@ demo pipeline:
                             model: 'alphafold2'
                             plddt_threshold: 50
                             average_cutoff: 10
-                            max_samples: 10
+                            max_samples: 80
+                            max_folds_per_sample: 50
                     -   fold_collection:
                             model: 'alphafold2'
     -   interactions:

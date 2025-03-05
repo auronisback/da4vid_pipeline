@@ -72,3 +72,53 @@ class SequenceFilteringStepTest(unittest.TestCase):
       self.assertTrue(fold.protein.props.has_key('omegafold.plddt'))
       self.assertGreaterEqual(fold.metrics.get_metric('plddt'), 51)
       self.assertEqual(fold.protein.props.get_value('omegafold.plddt'), fold.metrics.get_metric('plddt'))
+
+  def test_sequence_filtering_step_by_plddt_threshold_cutoff_and_maximum_number_of_samples(self):
+    sample_set = sample_set_from_folders(self.backbones_folder, self.folds_folder,
+                                         model='omegafold', b_fact_prop='plddt')
+    filtered_set = SequenceFilteringStep(
+      name='seq_filtering_test',
+      folder=self.folder,
+      model='omegafold',
+      plddt_threshold=51,
+      average_cutoff=3,
+      max_samples=1,
+      max_folds_per_sample=1
+    ).execute(sample_set)
+    samples = filtered_set.samples()
+    self.assertEqual(1, len(samples))
+    sample = samples[0]
+    self.assertEqual(1, len(sample.sequences()))
+    for fold in sample.get_folds_for_model('omegafold'):
+      self.assertIsInstance(fold, Fold)
+      self.assertTrue(fold.protein.props.has_key('omegafold.plddt'))
+      self.assertGreaterEqual(fold.metrics.get_metric('plddt'), 51)
+      self.assertEqual(fold.protein.props.get_value('omegafold.plddt'), fold.metrics.get_metric('plddt'))
+
+  def test_sequence_filtering_step_by_with_max_folds_per_sequence(self):
+    sample_set = sample_set_from_folders(self.backbones_folder, self.folds_folder,
+                                         model='omegafold', b_fact_prop='plddt')
+    filtered_set = SequenceFilteringStep(
+      name='seq_filtering_test',
+      folder=self.folder,
+      model='omegafold',
+      plddt_threshold=51,
+      average_cutoff=3,
+      max_folds_per_sample=3
+    ).execute(sample_set)
+    samples = filtered_set.samples()
+    self.assertEqual(2, len(samples))
+    sample = samples[0]
+    self.assertEqual(2, len(sample.sequences()))
+    for fold in sample.get_folds_for_model('omegafold'):
+      self.assertIsInstance(fold, Fold)
+      self.assertTrue(fold.protein.props.has_key('omegafold.plddt'))
+      self.assertGreaterEqual(fold.metrics.get_metric('plddt'), 51)
+      self.assertEqual(fold.protein.props.get_value('omegafold.plddt'), fold.metrics.get_metric('plddt'))
+    sample = samples[1]
+    self.assertEqual(3, len(sample.sequences()))
+    for fold in sample.get_folds_for_model('omegafold'):
+      self.assertIsInstance(fold, Fold)
+      self.assertTrue(fold.protein.props.has_key('omegafold.plddt'))
+      self.assertGreaterEqual(fold.metrics.get_metric('plddt'), 51)
+      self.assertEqual(fold.protein.props.get_value('omegafold.plddt'), fold.metrics.get_metric('plddt'))

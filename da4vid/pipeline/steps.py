@@ -350,7 +350,9 @@ class FoldCollectionStep(PipelineStep):
   Utility Step to collect all folds for a specific model in a sample set into a new sample set.
   """
 
-  def __init__(self, name: str, model: str, **kwargs):
+  ALLOWED_METRICS = ['plddt']
+
+  def __init__(self, name: str, model: str, max_folds: int = -1, metric: str = 'plddt', **kwargs):
     """
     Creates the step which will collect folds for the given model.
     :param name: The name of this step in the pipeline

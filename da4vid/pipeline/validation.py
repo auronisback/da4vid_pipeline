@@ -2,7 +2,7 @@ import logging
 import os
 import shutil
 import sys
-from typing import List
+from typing import List, Tuple
 
 import torch
 from tqdm import tqdm
@@ -127,7 +127,7 @@ class OmegaFoldStep(ContainerizedStep):
 
 class SequenceFilteringStep(PipelineStep):
   def __init__(self, model: str, plddt_threshold: float, average_cutoff: float = None, rog_cutoff: float = None,
-               max_samples: int = None, gpu_manager: CudaDeviceManager = None, **kwargs):
+               max_folds_per_sample: int = None, max_samples: int = None, gpu_manager: CudaDeviceManager = None, **kwargs):
     """
     Initializes the sequence filtering step, evaluating the average pLDDT
     of folding predictions for all samples in each original backbone protein
@@ -138,17 +138,25 @@ class SequenceFilteringStep(PipelineStep):
     :param average_cutoff: The number of samples used to evaluate average pLDDT. If None, all
                            samples for the backbone will be used
     :param rog_cutoff: The cutoff for RoG filtering. If None, no cutoff will be applied
-    :param max_samples: The maximum number of samples to retain for each original protein. If None, no
+    :param max_folds_per_sample: The maximum number of samples to retain for each original protein. If None, no
                         limit to the number of samples will be used. Defaults to None
+    :param max_samples: Maximum number of original backbones to be retained. If not given, the set of all original
+                        backbones will be returned
     :param gpu_manager: The CUDA device manager used to assign GPUs. If not given, CPU will be used
                        instead
     """
     super().__init__(**kwargs)
+    if max_folds_per_sample is not None and max_folds_per_sample <= 0:
+      raise AttributeError(f'Max fold per sample must be greater than 0 ({max_folds_per_sample} given)')
+    if max_samples is not None and max_samples <= 0:
+      raise AttributeError(f'Max retained samples must be greater than 0 ({max_samples} given)')
     self.model = model
     self.plddt_threshold = plddt_threshold
     self.average_cutoff = average_cutoff
     self.rog_cutoff = rog_cutoff
+    self.max_folds_per_sample = max_folds_per_sample
     self.max_samples = max_samples
+    print(self.max_samples, self.max_folds_per_sample)
     self.device = gpu_manager.next_device().name if gpu_manager else 'cpu'
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
 
@@ -158,20 +166,27 @@ class SequenceFilteringStep(PipelineStep):
     :return: The SampleSet object with filtered samples for each original backbone
     """
     filtered_set = SampleSet()
-    logging.info(f'Filtering samples with mean pLDDT >= {self.plddt_threshold}')
+    logging.info(f'Filtering {self.max_samples if self.max_samples else ""} '
+                 f'samples with mean pLDDT >= {self.plddt_threshold}')
+    samples_plddt = []
     for sample in tqdm(sample_set.samples(), file=sys.stdout):
       folds = sample.get_folds_for_model(self.model)
-      filtered_folds = self.__filter_by_plddt(folds)
+      filtered_folds, mean_plddt = self.__filter_by_plddt(folds)
       # Sorting and filtering by RoG
       if filtered_folds and self.rog_cutoff is not None:
         filtered_folds = self.__filter_by_rog(filtered_folds)
       if filtered_folds:
         new_sample = Sample(sample.name, sample.filepath, sample.protein)
+        filtered_folds = filtered_folds[:self.max_folds_per_sample]
         new_sample.add_sequences([fold.sequence for fold in filtered_folds])
-        filtered_set.add_samples(new_sample)
+        samples_plddt.append((new_sample, mean_plddt))
+    if self.max_samples is not None:
+      sorted(samples_plddt, key=lambda s_tuple: s_tuple[1], reverse=True)
+      samples_plddt = samples_plddt[:self.max_samples]
+    filtered_set.add_samples([s for s, _ in samples_plddt])
     logging.info(f'Filtered {len(filtered_set.samples())} samples for a total of '
-          f'{len([fold for sample in filtered_set.samples() for fold in sample.get_folds_for_model(self.model)])} '
-          f'folds')
+                 f'{len([fold for sample in filtered_set.samples() for fold in sample.get_folds_for_model(self.model)])} '
+                 f'folds')
     self.__save_filtered_set(filtered_set)
     return filtered_set
 
@@ -181,7 +196,7 @@ class SequenceFilteringStep(PipelineStep):
       shutil.rmtree(self.output_dir)
     return self._execute(sample_set)
 
-  def __filter_by_plddt(self, folds: List[Fold]) -> List[Fold]:
+  def __filter_by_plddt(self, folds: List[Fold]) -> Tuple[List[Fold], float]:
     if folds:
       plddts = evaluate_plddt([f.protein for f in folds], f'{self.model}.plddt', self.device)
       # Adding pLDDT metric to fold
@@ -192,8 +207,11 @@ class SequenceFilteringStep(PipelineStep):
       mean_plddt = torch.mean(torch.tensor([fold.metrics.get_metric('plddt') for fold in folds_for_avg]))
       if mean_plddt >= self.plddt_threshold:
         # Sample mean pLDDT is greater than threshold, retaining folds better than average
-        return [fold for fold in folds if fold.metrics.get_metric('plddt') > self.plddt_threshold]
-    return []
+        folds = [fold for fold in folds if fold.metrics.get_metric('plddt') > self.plddt_threshold]
+        # Sorting by descending pLDDT
+        sorted(folds, key=lambda f: f.metrics.get_metric('plddt'), reverse=True)
+        return folds, mean_plddt.item()
+    return [], 0
 
   def __filter_by_rog(self, folds: List[Fold]) -> List[Fold]:
     rog([fold.protein for fold in folds], device=self.device)  # Evaluating RoG

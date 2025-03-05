@@ -116,8 +116,10 @@ class PipelinePrinter:
     print(f'{header}{self.BLANK if last else self.PIPE}  +  Number of Samples for pLDDT avg: {sf_step.average_cutoff}',
           file=self.file)
     print(f'{header}{self.BLANK if last else self.PIPE}  +  RoG cutoff: {sf_step.rog_cutoff}', file=self.file)
-    print(f'{header}{self.BLANK if last else self.PIPE}  +  Max Number of Samples: {sf_step.max_samples}',
-          file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Max Number of folds per sample: '
+          f'{sf_step.max_folds_per_sample if sf_step.max_folds_per_sample else "no limit"}', file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Max Number of Samples: '
+          f'{sf_step.max_samples if sf_step.max_samples else "no limit"}', file=self.file)
 
   def __print_colabfold_step(self, cf_step: ColabFoldStep, header: str, last: bool) -> None:
     print(f'{header + (self.ELBOW if last else self.TEE)}ColabFold: {cf_step.name}', file=self.file)
