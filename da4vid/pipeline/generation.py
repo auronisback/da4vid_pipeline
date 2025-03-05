@@ -175,7 +175,8 @@ class BackboneFilteringStep(PipelineStep):
     logging.info('Filtering generated backbones by SS and RoG')
     clustered_ss = cluster_by_ss([s.protein for s in sample_set.samples()],
                                  threshold=self.ss_threshold, device=self.device)
-    logging.info(f'Found {sum([len(v) for v in clustered_ss.values()])} proteins with SS number >= {self.ss_threshold}:')
+    logging.info(
+      f'Found {sum([len(v) for v in clustered_ss.values()])} proteins with SS number >= {self.ss_threshold}:')
     logging.info('  SS: number ')
     for k in clustered_ss.keys():
       logging.info(f'  {k}: {len(clustered_ss[k])}')
@@ -185,7 +186,7 @@ class BackboneFilteringStep(PipelineStep):
       filtered_proteins += filter_by_rog(clustered_ss[k], cutoff=self.rog_cutoff,
                                          percentage=self.rog_percentage, device=self.device)
     logging.info(f'Filtered {len(filtered_proteins)} proteins by RoG with '
-          f'cutoff {self.rog_cutoff}{"%" if self.rog_percentage else ""}:')
+                 f'cutoff {self.rog_cutoff}{"%" if self.rog_percentage else ""}:')
     for p in filtered_proteins:
       logging.info(f'  {p.name}: {p.get_prop("rog").item():.3f} A')
     # Copying the filtered proteins into the output location

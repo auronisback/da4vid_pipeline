@@ -14,7 +14,7 @@ from da4vid.pipeline.generation import CARBonAraStep
 from test.cfg import RESOURCES_ROOT
 
 
-class CARBonAraStepTest(unittest.TestCase):
+class CARBonAraStepWithDockerTest(unittest.TestCase):
 
   def setUp(self):
     warnings.simplefilter('ignore', ResourceWarning)

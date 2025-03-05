@@ -71,7 +71,7 @@ class CARBonAraContainer(BaseContainer):
       return res
 
   def __get_command_for_backbone(self, backbone_basename: str) -> str:
-    return (f'carbonara '
+    return (f'python /CARBonAra/carbonara.py '
             f'--num_sequences {self.num_sequences} '
             f'--imprint_ratio {self.imprint_ratio} '
             f'--sampling_method {self.sampling_method} '

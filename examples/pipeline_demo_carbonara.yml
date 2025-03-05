@@ -1,0 +1,85 @@
+demo pipeline with carbonara:
+    folder: demo_pipeline_carbonara
+    antigen: demo.pdb
+    epitope: A26-34
+    steps:
+    -   iteration 1:
+            steps:
+            -   generation:
+                    steps:
+                    -   rfdiffusion:
+                            num_designs: 1
+                            partial_T: 23
+                            contacts_threshold: 5
+                            rog_potential: 12
+                    -   backbone_filtering:
+                            ss_threshold: 4
+                            rog_cutoff: 10
+                    -   carbonara:
+                            num_sequences: 20
+                            imprint_ratio: .5
+                            sampling_method: 'sampled'
+                            ignore_water: True
+            -   validation:
+                    steps:
+                    -   omegafold:
+                            num_recycles: 5
+                            model_weights: 2
+                    -   sequence_filtering:
+                            name: 'omegafold_filtering'
+                            model: 'omegafold'
+                            plddt_threshold: 40
+                            average_cutoff: 20
+                            rog_cutoff: 10
+                            max_samples: 200
+                    -   colabfold:
+                            num_recycles: 3
+                            model_name: 'alphafold2'
+                            num_models: 5
+                    -   sequence_filtering:
+                            name: 'colabfold_filtering'
+                            model: 'alphafold2'
+                            plddt_threshold: 40
+                            average_cutoff: 10
+                            max_samples: 80
+                    -   fold_collection:
+                            model: 'alphafold2'
+    -   iteration 2:
+            steps:
+            -   generation:
+                    steps:
+                    -   proteinmpnn:
+                            seqs_per_target: 20
+                            sampling_temp: .2
+                            backbone_noise: .0
+                            batch_size: 20
+            -   validation:
+                    steps:
+                    -   omegafold:
+                            num_recycles: 5
+                            model_weights: 2
+                    -   sequence_filtering:
+                            name: 'omegafold_filtering'
+                            model: 'omegafold'
+                            plddt_threshold: 50
+                            average_cutoff: 10
+                            rog_cutoff: 10
+                            max_samples: 200
+                            max_folds_per_sample: 50
+                    -   colabfold:
+                            num_recycles: 3
+                            model_name: 'alphafold2'
+                            num_models: 5
+                    -   sequence_filtering:
+                            name: 'colabfold_filtering'
+                            model: 'alphafold2'
+                            plddt_threshold: 50
+                            average_cutoff: 10
+                            max_samples: 80
+                            max_folds_per_sample: 50
+                    -   fold_collection:
+                            model: 'alphafold2'
+    -   interactions:
+            steps:
+            -   masif:
+                    name: 'MaSIF'

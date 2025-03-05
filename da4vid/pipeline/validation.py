@@ -156,7 +156,6 @@ class SequenceFilteringStep(PipelineStep):
     self.rog_cutoff = rog_cutoff
     self.max_folds_per_sample = max_folds_per_sample
     self.max_samples = max_samples
-    print(self.max_samples, self.max_folds_per_sample)
     self.device = gpu_manager.next_device().name if gpu_manager else 'cpu'
     self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
 
