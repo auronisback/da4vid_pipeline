@@ -95,16 +95,19 @@ class PointCloud2ResiPredictions(abc.ABC):
   to ease testing.
   """
   @staticmethod
-  def evaluate_interactions_for_protein(protein: Protein, masif_folder: str) -> None:
+  def evaluate_interactions_for_protein(protein: Protein, point_cloud_folder: str,
+                                        prediction_folder: str = None) -> None:
     """
     Evaluates the per-residue interaction of a protein given the folder of point cloud
     coordinates and per-point predictions evaluated by MaSIF. A property for each residue
     in the protein will be set accordingly.
     :param protein: The protein whose per-residue interactions should be evaluated
-    :param masif_folder: The folder with MaSIF point clouds and predictions
+    :param point_cloud_folder: The folder with MaSIF point cloud coordinates
+    :param prediction_folder: The folder with MaSIF predictions. If None, it will be the same as point_cloud_folder
     """
-    point_cloud = PointCloud2ResiPredictions.__point_cloud_from_folder(masif_folder)
-    predictions = PointCloud2ResiPredictions.__predictions_from_folder(masif_folder)
+    point_cloud = PointCloud2ResiPredictions.__point_cloud_from_folder(point_cloud_folder)
+    predictions = PointCloud2ResiPredictions.__predictions_from_folder(prediction_folder if prediction_folder
+                                                                       else point_cloud_folder, protein.name)
     atom_coords = protein.coords().double()
     dist = torch.cdist(point_cloud, atom_coords)
     min_dist = torch.min(dist, dim=1)
@@ -127,5 +130,5 @@ class PointCloud2ResiPredictions(abc.ABC):
     return torch.stack([X, Y, Z], dim=1)
 
   @staticmethod
-  def __predictions_from_folder(folder: str) -> torch.Tensor:
-    return torch.from_numpy(np.load(os.path.join(folder, f'pred_{os.path.basename(folder)}_A.npy')))
+  def __predictions_from_folder(folder: str, protein_name: str) -> torch.Tensor:
+    return torch.from_numpy(np.load(os.path.join(folder, f'pred_{protein_name.replace("_", ".")}_A.npy')))
