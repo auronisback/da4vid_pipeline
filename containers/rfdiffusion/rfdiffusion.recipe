@@ -31,6 +31,7 @@ pyrsistent==0.19.3 \
 
 mkdir -p /app/RFdiffusion
 cd /app/RFdiffusion
+cp /app/RFdiffusion/rfdiffusion/inference/sym_rots.npz /usr/local/lib/python3.9/dist-packages/rfdiffusion/inference/
 
 DGLBACKEND="pytorch"
 

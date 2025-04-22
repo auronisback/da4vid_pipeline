@@ -10,19 +10,19 @@ fi
 list_input=$1
 input_folder=$2
 
-if [ ! -f ${list_input} ]; then
+if [ ! -f "${list_input}" ]; then
     echo "List file ${list_input} does not exists or is not a regular file."
     exit 2
 fi
 
-if [ ! -e ${input_folder} ]; then
+if [ ! -e "${input_folder}" ]; then
     echo "Input folder ${input_folder} does not exists."
     exit 3
 fi
 
 i=1
-while read p; do
+while read -r p; do
     echo "$i - Preparing ${p}"
-    ${DATA_PREPARE_SCRIPT} --file ${input_folder}/$p
+    ${DATA_PREPARE_SCRIPT} --file "${input_folder}"/"$p"
     i=$((i+1))
-done < ${list_input}
+done < "${list_input}"

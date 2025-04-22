@@ -32,6 +32,7 @@ demo pipeline with carbonara:
                             average_cutoff: 20
                             rog_cutoff: 10
                             max_samples: 200
+                            max_folds_per_sample: 50
                     -   colabfold:
                             num_recycles: 3
                             model_name: 'alphafold2'
@@ -64,8 +65,8 @@ demo pipeline with carbonara:
                             plddt_threshold: 50
                             average_cutoff: 10
                             rog_cutoff: 10
-                            max_samples: 200
-                            max_folds_per_sample: 50
+                            max_samples: 100
+                            max_folds_per_sample: 30
                     -   colabfold:
                             num_recycles: 3
                             model_name: 'alphafold2'

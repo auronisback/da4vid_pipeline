@@ -48,6 +48,9 @@ demo pipeline:
             steps:
             -   generation:
                     steps:
+                    -   backbone_filtering:
+                            ss_threshold: 4
+                            rog_cutoff: 10
                     -   proteinmpnn:
                             seqs_per_target: 20
                             sampling_temp: .2
@@ -75,8 +78,8 @@ demo pipeline:
                             model: 'alphafold2'
                             plddt_threshold: 50
                             average_cutoff: 10
-                            max_samples: 100
-                            max_folds_per_sample: 10
+                            max_samples: 200
+                            max_folds_per_sample: 100
                     -   fold_collection:
                             model: 'alphafold2'
     -   interactions:
