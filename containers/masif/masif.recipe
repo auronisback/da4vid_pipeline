@@ -1,16 +1,84 @@
 Bootstrap: docker
-From: pablogainza/masif:latest
+From: nvidia/cuda:12.4.0-runtime-ubuntu22.04
 Stage: spython-base
 
 %files
-./resources/prepare_from_list.sh /masif/data/masif_site
+resources/environment.yml .
+resources/computeAPBS.py .
+resources/prepare_from_list.sh .
+resources/data_prepare_one.sh .
+resources/predict_site.sh .
+resources/masif_opts.py .
+resources/custom_params.py .
 %post
 
+PATH="/miniconda3/bin:${PATH}"
+PATH="/miniconda3/bin:${PATH}"
 
-mkdir -p /masif/data/masif_site
-cd /masif/data/masif_site
+# Install wget to fetch Miniconda
+apt-get update && \
+apt-get install -y wget git apbs pdb2pqr && \
+apt-get clean && \
+rm -rf /var/lib/apt/lists/*
 
+# Install Miniconda on x86 or ARM platforms
+arch=$(uname -m) && \
+if [ "$arch" = "x86_64" ]; then \
+MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"; \
+elif [ "$arch" = "aarch64" ]; then \
+MINICONDA_URL="https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-aarch64.sh"; \
+else \
+echo "Unsupported architecture: $arch"; \
+exit 1; \
+fi && \
+wget $MINICONDA_URL -O miniconda.sh && \
+mkdir -p /root/.conda && \
+bash miniconda.sh -b -p /miniconda3 && \
+rm -f miniconda.sh
+
+CONDA_DEFAULT_ENV=myconda
+
+
+APBS_BIN=/usr/bin/apbs
+MULTIVALUE_BIN=/usr/share/apbs/tools/bin/bin/multivalue
+PDB2PQR_BIN=/usr/bin/pdb2pqr
+PATH=$PATH:/miniconda3/envs/masif-env/bin/reduce
+REDUCE_HET_DICT=/miniconda3/envs/masif-env/reduce_wwPDB_het_dict.txt
+PYMESH_PATH=/path/to/PyMesh
+MSMS_BIN=/miniconda3/envs/masif-env/bin/msms
+PDB2XYZRN=/path/to/msms/pdb_to_xyzrn
+
+
+conda init bash
+conda env create --file environment.yml
+echo "conda activate masif-env" >> ~/.bashrc
+
+# Cloning masif from github
+git clone https://github.com/lpdi-epfl/masif /masif
+mv ./computeAPBS.py /masif/source/triangulation
+mv ./prepare_from_list.sh /masif/data/masif_site
+mv ./data_prepare_one.sh /masif/data/masif_site
+mv ./predict_site.sh /masif/data/masif_site
+mv ./masif_opts.py /masif/source/default_config/masif_opts.py
+mv ./custom_params.py /masif/data/masif_site/nn_models/all_feat_3l/custom_params.py
+chmod 775 /masif/data/masif_site/prepare_from_list.sh && chmod 755 /masif/data/masif_site/data_prepare_one.sh && \
+  chmod 775 /masif/data/masif_site/predict_site.sh
+
+
+%environment
+export PATH="/miniconda3/bin:${PATH}"
+export CONDA_DEFAULT_ENV=myconda
+export APBS_BIN=/usr/bin/apbs
+export MULTIVALUE_BIN=/usr/share/apbs/tools/bin/bin/multivalue
+export PDB2PQR_BIN=/usr/bin/pdb2pqr
+export PATH=$PATH:/miniconda3/envs/masif-env/bin/reduce
+export REDUCE_HET_DICT=/miniconda3/envs/masif-env/reduce_wwPDB_het_dict.txt
+export PYMESH_PATH=/path/to/PyMesh
+export MSMS_BIN=/miniconda3/envs/masif-env/bin/msms
+export PDB2XYZRN=/path/to/msms/pdb_to_xyzrn
 %runscript
 cd /masif/data/masif_site
 exec /bin/bash "$@"
-
+%startscript
+cd /masif/data/masif_site
+exec /bin/bash "$@"
