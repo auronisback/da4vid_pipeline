@@ -14,7 +14,6 @@ from da4vid.containers.singularity import SingularityExecutorBuilder
 from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_from_pdb
 from da4vid.io.sample_io import sample_set_from_backbones
-from da4vid.pipeline.config import StaticConfig
 from da4vid.pipeline.interaction import MasifStep, PointCloud2ResiPredictions
 from test.cfg import RESOURCES_ROOT, DOTENV_FILE
 
@@ -33,7 +32,7 @@ class PointCloudTest(unittest.TestCase):
       self.assertFalse(torch.isnan(torch.tensor(resi.props.get_value(MasifStep.MASIF_INTERACTION_PROP_KEY))))
 
 
-class MasifStepTest(unittest.TestCase):
+class MasifStepTestWithDocker(unittest.TestCase):
 
   def setUp(self):
     warnings.simplefilter('ignore', ResourceWarning)
@@ -61,9 +60,9 @@ class MasifStepTest(unittest.TestCase):
     res_set = step.execute(sample_set)
     output_folders = os.listdir(step.output_dir)
     self.assertEqual(3, len(output_folders))
-    self.assertIn('sample1000', output_folders)
-    self.assertIn('sample1001', output_folders)
-    self.assertIn('sample1002', output_folders)
+    self.assertIn('sample-1000-01', output_folders)
+    self.assertIn('sample-1000-02', output_folders)
+    self.assertIn('sample-1001-01', output_folders)
     for sample in res_set.samples():
       for resi in sample.protein.residues():
         self.assertTrue(resi.props.has_key(MasifStep.MASIF_INTERACTION_PROP_KEY))
@@ -116,9 +115,9 @@ class MasifStepTestWithSingularity(unittest.TestCase):
     res_set = step.execute(sample_set)
     output_folders = os.listdir(step.output_dir)
     self.assertEqual(3, len(output_folders))
-    self.assertIn('sample1000', output_folders)
-    self.assertIn('sample1001', output_folders)
-    self.assertIn('sample1002', output_folders)
+    self.assertIn('sample-1000-01', output_folders)
+    self.assertIn('sample-1000-02', output_folders)
+    self.assertIn('sample-1001-01', output_folders)
     for sample in res_set.samples():
       for resi in sample.protein.residues():
         self.assertTrue(resi.props.has_key(MasifStep.MASIF_INTERACTION_PROP_KEY))

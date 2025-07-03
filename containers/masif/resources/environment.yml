@@ -1,0 +1,20 @@
+name: masif-env
+channels:
+    - defaults
+    - bioconda
+    - conda-forge
+    - open3d-admin
+    - powerai
+dependencies:
+    - python=3.6
+    - scikit-learn=0.24
+    - biopython=1.76
+    - msms=2.6.1
+    - pdb2pqr=3.1
+    - apbs=1.5
+    - pymesh2=0.2.1
+    - open3d-admin::open3d=0.5.0.0
+    - reduce=4.15
+    - tensorflow=1.12
+    - dask=2.2.0
+    - networkx=2.5

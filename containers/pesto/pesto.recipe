@@ -1,0 +1,27 @@
+Bootstrap: docker
+From: nvidia/cuda:12.4.0-runtime-ubuntu22.04
+Stage: spython-base
+
+%files
+resources/run_inference.py /
+%post
+
+apt update && apt upgrade -y \
+  && apt install -y git software-properties-common pip \
+  && ln -s $(which python3) /usr/bin/python
+
+git clone https://github.com/LBM-EPFL/PeSTo.git /PeSTo
+
+mkdir -p /PeSTo
+cd /PeSTo
+
+pip install -r requirements.txt
+
+mv /run_inference.py /PeSTo
+
+%runscript
+cd /PeSTo
+exec /bin/bash "$@"
+%startscript
+cd /PeSTo
+exec /bin/bash "$@"

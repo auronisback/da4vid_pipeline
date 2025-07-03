@@ -1,4 +1,7 @@
 #!/bin/bash
+
+DATA_PREPARATION_FOLDER=/masif/data/masif_site/output/data_preparation
+
 masif_root=/masif
 masif_source=$masif_root/source/
 masif_matlab=$masif_root/source/matlab_libs/
@@ -8,11 +11,11 @@ if [ "$1" == "--file" ]
 then
 	echo "Running masif site on $2"
 	PPI_PAIR_ID=$3
-	PDB_ID=$(echo "${PPI_PAIR_ID}"| cut -d"_" -f1)
-	CHAIN1=$(echo "${PPI_PAIR_ID}"| cut -d"_" -f2)
+	PDB_ID=$(echo ${PPI_PAIR_ID}| cut -d"_" -f1)
+	CHAIN1=$(echo ${PPI_PAIR_ID}| cut -d"_" -f2)
 	FILENAME=$2
-	mkdir -p data_preparation/00-raw_pdbs/
-	cp "$FILENAME" "data_preparation/00-raw_pdbs/${PDB_ID}.pdb"
+	mkdir -p "${DATA_PREPARATION_FOLDER}/00-raw_pdbs/"
+	cp "$FILENAME" "${DATA_PREPARATION_FOLDER}/00-raw_pdbs/${PDB_ID}.pdb"
 else
   echo "You need to specify one input file with --file option"
   exit 255
