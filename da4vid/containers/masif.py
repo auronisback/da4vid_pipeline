@@ -10,13 +10,13 @@ class MasifContainer(BaseContainer):
   DEFAULT_IMAGE = 'da4vid/masif:latest'
 
   CONTAINER_INPUT_FOLDER = '/masif/data/masif_site/inputs'
-  CONTAINER_OUTPUT_FOLDER = '/masif/data/masif_site/outputs'
+  CONTAINER_OUTPUT_FOLDER = '/masif/data/masif_site/output'
 
   PREPARE_LIST_SCRIPT = '/masif/data/masif_site/prepare_from_list.sh'
   PREDICT_SITE_SCRIPT = '/masif/data/masif_site/predict_site.sh'
-  RAW_DATA_FOLDER = '/masif/data/masif_site/data_preparation/00-raw-pdbs'
+  RAW_DATA_FOLDER = '/masif/data/masif_site/output/data_preparation/00-raw-pdbs'
   # Mesh coordinates are stored here, in a subfolder for each PDB in the list, as separate files (p1_<axis>.npy)
-  PRECOMPUTED_FOLDER = '/masif/data/masif_site/data_preparation/04a-precomputation_9A/precomputation'
+  PRECOMPUTED_FOLDER = '/masif/data/masif_site/output/data_preparation/04a-precomputation_9A/precomputation'
   # Predicted sites per-vertex are stored here in npy files
   PREDICTED_DATA = '/masif/data/masif_site/output/all_feat_3l/pred_data'
 
@@ -48,9 +48,10 @@ class MasifContainer(BaseContainer):
 
   def __get_commands(self) -> List[str]:
     return [
-      f'/bin/bash {self.PREPARE_LIST_SCRIPT} {self.CONTAINER_INPUT_FOLDER}/list.txt {self.CONTAINER_INPUT_FOLDER}',
+      f'mkdir -p /masif/data/masif_site/output/data_preparation/.tmp',  # Creating temporary directory
+      f'conda run -n masif-env {self.PREPARE_LIST_SCRIPT} {self.CONTAINER_INPUT_FOLDER}/list.txt {self.CONTAINER_INPUT_FOLDER}',
       f"/bin/bash -c '/bin/ls {self.PRECOMPUTED_FOLDER} > {self.CONTAINER_INPUT_FOLDER}/pred_list.txt'",
-      f'/bin/bash {self.PREDICT_SITE_SCRIPT} -l {self.CONTAINER_INPUT_FOLDER}/pred_list.txt',
+      f'conda run -n masif-env {self.PREDICT_SITE_SCRIPT} -l {self.CONTAINER_INPUT_FOLDER}/pred_list.txt',
       f'/bin/rm {self.CONTAINER_INPUT_FOLDER}/pred_list.txt',
       f'/bin/cp -r {self.PREDICTED_DATA} {self.CONTAINER_OUTPUT_FOLDER}/pred_data',
       f'/bin/cp -r {self.PRECOMPUTED_FOLDER} {self.CONTAINER_OUTPUT_FOLDER}/meshes',

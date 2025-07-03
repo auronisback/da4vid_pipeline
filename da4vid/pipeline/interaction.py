@@ -7,13 +7,14 @@ import numpy as np
 import torch
 
 from da4vid.containers.masif import MasifContainer
+from da4vid.containers.pesto import PestoContainer
+from da4vid.io import read_from_pdb
 from da4vid.model.proteins import Protein
 from da4vid.model.samples import SampleSet
 from da4vid.pipeline.steps import ContainerizedStep, PipelineException
 
 
 class MasifStep(ContainerizedStep):
-
   MASIF_INTERACTION_PROP_KEY = 'masif.interaction_prob'
 
   class MasifConfig:
@@ -47,8 +48,8 @@ class MasifStep(ContainerizedStep):
     os.makedirs(self.input_dir, exist_ok=True)
     with open(os.path.join(self.input_dir, 'list.txt'), 'w') as f:
       for sample in sample_set.samples():
-        basename = os.path.basename(sample.filepath)
-        list_name = f'{sample.name}_A'
+        basename = os.path.basename(self.rename_input_pdb(sample.filepath))
+        list_name = f'{self.rename_input_pdb(sample.name)}_A'
         f.write(f'{basename} {list_name}\n')
         shutil.copy2(sample.filepath, os.path.join(self.input_dir, basename))
 
@@ -77,7 +78,7 @@ class MasifStep(ContainerizedStep):
 
   def __evaluate_interactions(self, sample_set: SampleSet) -> SampleSet:
     for sample in sample_set.samples():
-      masif_folder = os.path.join(self.output_dir, sample.name)
+      masif_folder = os.path.join(self.output_dir, self.rename_input_pdb(sample.name))
       PointCloud2ResiPredictions.evaluate_interactions_for_protein(sample.protein, masif_folder)
     return sample_set
 
@@ -87,6 +88,14 @@ class MasifStep(ContainerizedStep):
   def output_folder(self) -> str:
     return self.output_dir
 
+  @staticmethod
+  def rename_input_pdb(name: str) -> str:
+    return name.replace('_', '-')
+
+  @staticmethod
+  def rollback_renaming(name: str) -> str:
+    return name.replace('-', '_')
+
 
 class PointCloud2ResiPredictions(abc.ABC):
   """
@@ -94,6 +103,7 @@ class PointCloud2ResiPredictions(abc.ABC):
   from point clouds produced by MaSIF. Separated from the MaSIF step
   to ease testing.
   """
+
   @staticmethod
   def evaluate_interactions_for_protein(protein: Protein, point_cloud_folder: str,
                                         prediction_folder: str = None) -> None:
@@ -107,7 +117,9 @@ class PointCloud2ResiPredictions(abc.ABC):
     """
     point_cloud = PointCloud2ResiPredictions.__point_cloud_from_folder(point_cloud_folder)
     predictions = PointCloud2ResiPredictions.__predictions_from_folder(prediction_folder if prediction_folder
-                                                                       else point_cloud_folder, protein.name)
+                                                                       else point_cloud_folder,
+                                                                       MasifStep.rename_input_pdb(protein.name))
+    print(predictions)
     atom_coords = protein.coords().double()
     dist = torch.cdist(point_cloud, atom_coords)
     min_dist = torch.min(dist, dim=1)
@@ -132,3 +144,68 @@ class PointCloud2ResiPredictions(abc.ABC):
   @staticmethod
   def __predictions_from_folder(folder: str, protein_name: str) -> torch.Tensor:
     return torch.from_numpy(np.load(os.path.join(folder, f'pred_{protein_name.replace("_", ".")}_A.npy')))
+
+
+class PestoStep(ContainerizedStep):
+  """
+  Encapsulates Pesto configuration used to run the container.
+  """
+
+  PESTO_INTERACTION_PROP_KEY = 'pesto.interaction_prob'
+
+  def __init__(self, **kwargs):
+    super().__init__(**kwargs)
+    self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
+    self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
+    self.container_out_dir = os.path.join(self.get_context_folder(), 'tmp_out')
+
+  def _execute(self, sample_set: SampleSet) -> SampleSet:
+    self.__copy_input_pdbs(sample_set)
+    self.__execute_container()
+    self.__extract_outputs(sample_set)
+    return sample_set
+
+  def __copy_input_pdbs(self, sample_set: SampleSet) -> None:
+    os.makedirs(self.input_dir, exist_ok=True)
+    os.makedirs(self.output_dir, exist_ok=True)
+    for sample in sample_set.samples():
+      shutil.copy2(sample.filepath, self.input_dir)
+      logging.debug(f'Copied {sample.filepath} into {self.input_dir}')
+
+  def __execute_container(self) -> None:
+    os.makedirs(self.output_dir, exist_ok=True)
+    pesto = PestoContainer(
+      builder=self.builder,
+      gpu_manager=self.gpu_manager,
+      input_folder=self.input_dir,
+      output_folder=self.output_dir,
+      out_logfile=self.out_logfile,
+      err_logfile=self.err_logfile
+    )
+    if not pesto.run():
+      raise PipelineException('PeSTo container failed')
+
+  def __extract_outputs(self, sample_set: SampleSet) -> None:
+    for prediction in os.listdir(self.output_dir):
+      sample_name = '.'.join(prediction.split('.')[:-1]).replace('_if', '')
+      sample = sample_set.get_sample_by_name(sample_name)
+      if not sample:
+        logging.warning(f'Sample {prediction} (name: {sample_name}) not found in sample set')
+      else:
+        predicted_protein = read_from_pdb(os.path.join(self.output_dir, prediction),
+                                          b_fact_prop=PestoStep.PESTO_INTERACTION_PROP_KEY)
+        self.__assign_residue_probabilities(sample.protein, predicted_protein)
+
+  def _resume(self, sample_set: SampleSet) -> SampleSet:
+    pass
+
+  def __assign_residue_probabilities(self, sample_protein: Protein, predicted_protein: Protein) -> None:
+    for s_resi, p_resi in zip(sample_protein.residues(), predicted_protein.residues()):
+      s_resi.props.add_value(self.PESTO_INTERACTION_PROP_KEY,
+                             torch.mean(torch.tensor([a.props[self.PESTO_INTERACTION_PROP_KEY] for a in p_resi.atoms])))
+
+  def output_folder(self) -> str:
+    return self.output_dir
+
+  def input_folder(self) -> str:
+    return self.input_dir

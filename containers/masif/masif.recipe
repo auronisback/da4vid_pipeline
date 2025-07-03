@@ -3,9 +3,16 @@ From: pablogainza/masif:latest
 Stage: spython-base
 
 %files
-./resources/prepare_from_list.sh /masif/data/masif_site
+resources/prepare_from_list.sh /masif/data/masif_site
+resources/data_prepare_one.sh /masif/data/masif_site
+resources/predict_site.sh /masif/data/masif_site
+resources/masif_opts.py /masif/source/default_config/masif_opts.py
+resources/custom_params.py /masif/data/masif_site/nn_models/all_feat_3l/custom_params.py
+resources/computeAPBS.py /masif/source/triangulation
 %post
 
+chmod 755 /masif/data/masif_site/prepare_from_list.sh && chmod 755 /masif/data/masif_site/data_prepare_one.sh \
+&& chmod 755 /masif/data/masif_site/predict_site.sh
 
 mkdir -p /masif/data/masif_site
 cd /masif/data/masif_site
@@ -13,4 +20,6 @@ cd /masif/data/masif_site
 %runscript
 cd /masif/data/masif_site
 exec /bin/bash "$@"
-
+%startscript
+cd /masif/data/masif_site
+exec /bin/bash "$@"

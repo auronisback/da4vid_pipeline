@@ -22,7 +22,9 @@ fi
 
 i=1
 while read -r p; do
+    input_file=$input_folder/$(echo $p | cut -d' ' -f1)
+    ppi_id=$(echo $p | cut -d' ' -f2)
     echo "$i - Preparing ${p}"
-    ${DATA_PREPARE_SCRIPT} --file "${input_folder}"/"$p"
+    ${DATA_PREPARE_SCRIPT} --file "${input_file}" "${ppi_id}"
     i=$((i+1))
 done < "${list_input}"

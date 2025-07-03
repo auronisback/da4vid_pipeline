@@ -1,0 +1,25 @@
+#!/bin/bash
+
+DATA_PREPARATION_FOLDER=/masif/data/masif_site/output/data_preparation
+
+masif_root=/masif
+masif_source=$masif_root/source/
+masif_matlab=$masif_root/source/matlab_libs/
+export PYTHONPATH=$PYTHONPATH:$masif_source
+export masif_matlab
+if [ "$1" == "--file" ]
+then
+	echo "Running masif site on $2"
+	PPI_PAIR_ID=$3
+	PDB_ID=$(echo ${PPI_PAIR_ID}| cut -d"_" -f1)
+	CHAIN1=$(echo ${PPI_PAIR_ID}| cut -d"_" -f2)
+	FILENAME=$2
+	mkdir -p "${DATA_PREPARATION_FOLDER}/00-raw_pdbs/"
+	cp "$FILENAME" "${DATA_PREPARATION_FOLDER}/00-raw_pdbs/${PDB_ID}.pdb"
+else
+  echo "You need to specify one input file with --file option"
+  exit 255
+fi
+
+python -W ignore $masif_source/data_preparation/01-pdb_extract_and_triangulate.py "${PDB_ID}_${CHAIN1}"
+python $masif_source/data_preparation/04-masif_precompute.py masif_site "${PPI_PAIR_ID}"
