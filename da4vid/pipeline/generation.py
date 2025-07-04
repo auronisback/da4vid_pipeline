@@ -376,6 +376,8 @@ class ProteinMPNNStep(ContainerizedStep):
 
 
 class CARBonAraStep(ContainerizedStep):
+
+  # TODO: check why omegafold cannot use this
   class CARBonAraConfig:
 
     def __init__(self, num_sequences: int, imprint_ratio: float = .5,

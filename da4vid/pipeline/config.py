@@ -1,3 +1,4 @@
+import logging
 import os
 from typing import List, Dict, Any
 
@@ -11,6 +12,7 @@ from da4vid.containers.colabfold import ColabFoldContainer
 from da4vid.containers.docker import DockerExecutorBuilder
 from da4vid.containers.masif import MasifContainer
 from da4vid.containers.omegafold import OmegaFoldContainer
+from da4vid.containers.pesto import PestoContainer
 from da4vid.containers.pmpnn import ProteinMPNNContainer
 from da4vid.containers.rfdiffusion import RFdiffusionContainer
 from da4vid.containers.singularity import SingularityExecutorBuilder
@@ -19,8 +21,8 @@ from da4vid.io import read_from_pdb
 from da4vid.model.proteins import Protein, Epitope
 from da4vid.model.samples import Sample
 from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep, CARBonAraStep
-from da4vid.pipeline.interaction import MasifStep
-from da4vid.pipeline.steps import CompositeStep, PipelineStep, PipelineRootStep, FoldCollectionStep
+from da4vid.pipeline.interaction import MasifStep, PestoStep
+from da4vid.pipeline.steps import CompositeStep, PipelineStep, PipelineRootStep, FoldCollectionStep, ContainerizedStep
 from da4vid.pipeline.validation import OmegaFoldStep, SequenceFilteringStep, ColabFoldStep
 
 
@@ -45,7 +47,8 @@ class StaticConfig:
     """
 
     def __init__(self, client: docker.DockerClient, rfdiffusion_image: str, protein_mpnn_image: str,
-                 omegafold_image: str, colabfold_image: str, masif_image: str, carbonara_image: str):
+                 omegafold_image: str, colabfold_image: str, masif_image: str, carbonara_image: str,
+                 pesto_image: str):
       """
       Creates the docker configuration object that stores the static configuration of the pipeline.
       :param client: The client used to query Docker APIs
@@ -55,6 +58,7 @@ class StaticConfig:
       :param colabfold_image: Tag of the Colabfold docker image
       :param masif_image: Tag of the MaSIF docker image
       :param carbonara_image: Tag of the CARBonAra docker image
+      :param pesto_image: Tag of the PeSTo docker image
       :raise Da4vidConfigurationError: If specified container images are not available on the machine
       """
       self.client = client
@@ -64,6 +68,7 @@ class StaticConfig:
       self.colabfold_image = colabfold_image
       self.masif_image = masif_image
       self.carbonara_image = carbonara_image
+      self.pesto_image = pesto_image
       # Dictionary for caching images
       self.__dict = {
         'rfdiffusion': self.rfdiffusion_image,
@@ -72,6 +77,7 @@ class StaticConfig:
         'colabfold': self.colabfold_image,
         'masif': self.masif_image,
         'carbonara': self.carbonara_image,
+        'pesto': self.pesto_image
       }
       self.__check_images()
 
@@ -100,13 +106,14 @@ class StaticConfig:
     """
 
     def __init__(self, rfdiffusion_sif: str, protein_mpnn_sif: str, omegafold_sif: str,
-                 colabfold_sif: str, masif_sif: str, carbonara_sif: str):
+                 colabfold_sif: str, masif_sif: str, carbonara_sif: str, pesto_sif: str):
       self.rfdiffusion_sif = rfdiffusion_sif
       self.protein_mpnn_sif = protein_mpnn_sif
       self.omegafold_sif = omegafold_sif
       self.colabfold_sif = colabfold_sif
       self.masif_sif = masif_sif
       self.carbonara_sif = carbonara_sif
+      self.pesto_sif = pesto_sif
       # Caching dict
       self.__dict = {
         'rfdiffusion': self.rfdiffusion_sif,
@@ -114,7 +121,8 @@ class StaticConfig:
         'omegafold': self.omegafold_sif,
         'colabfold': self.colabfold_sif,
         'masif': self.masif_sif,
-        'carbonara': self.carbonara_sif
+        'carbonara': self.carbonara_sif,
+        'pesto': self.pesto_sif
       }
       self.__check_sif_paths()
 
@@ -214,7 +222,8 @@ class StaticConfig:
           omegafold_image=os.environ.get('OMEGAFOLD_IMAGE', OmegaFoldContainer.DEFAULT_IMAGE),
           colabfold_image=os.environ.get('COLABFOLD_IMAGE', ColabFoldContainer.DEFAULT_IMAGE),
           masif_image=os.environ.get('MASIF_IMAGE', MasifContainer.DEFAULT_IMAGE),
-          carbonara_image=os.environ.get('CARBONARA_IMAGE', CARBonAraContainer.DEFAULT_IMAGE)
+          carbonara_image=os.environ.get('CARBONARA_IMAGE', CARBonAraContainer.DEFAULT_IMAGE),
+          pesto_image=os.environ.get('PESTO_IMAGE', PestoContainer.DEFAULT_IMAGE)
         )
       elif backend == 'singularity':
         singularity_config = StaticConfig.SingularityStaticConfig(
@@ -224,6 +233,7 @@ class StaticConfig:
           colabfold_sif=os.environ.get('COLABFOLD_SIF'),
           masif_sif=os.environ.get('MASIF_SIF'),
           carbonara_sif=os.environ.get('CARBONARA_SIF'),
+          pesto_sif=os.environ.get('PESTO_SIF')
         )  # Todo
       else:
         raise Da4vidConfigurationError([f'Unknown backend: {backend}'])
@@ -268,7 +278,9 @@ class PipelineCreator:
     """
     with open(yml_config) as f:
       data = yaml.safe_load(f)
-      return self.__process_root_element(data, os.path.dirname(yml_config))
+      pipeline = self.__process_root_element(data, os.path.dirname(yml_config))
+      self.__validate_pipeline(pipeline)
+      return pipeline
 
   def __get_executor_builder_for_step(self, step_type: str):
     if self.static_config.backend() == 'docker':
@@ -378,6 +390,13 @@ class PipelineCreator:
           parent=parent,
           gpu_manager=self.static_config.gpu_manager
         )
+      case 'pesto':
+        return PestoStep(
+          builder=self.__get_executor_builder_for_step('pesto'),
+          name=el.get('name', 'pesto'),
+          parent=parent,
+          gpu_manager=self.static_config.gpu_manager
+        )
       case 'fold_collection':
         return FoldCollectionStep(
           name=el.get('name', 'fold_collection'),
@@ -417,3 +436,21 @@ class PipelineCreator:
         seen.add(ctx_folder)
       else:
         raise PipelineCreator.PipelineCreationError(f'Two steps have the same context folder: {ctx_folder}')
+
+  def __validate_pipeline(self, pipeline: PipelineRootStep) -> None:
+    errors = self.__validate_step(pipeline)
+    if errors:
+      for err in errors:
+        logging.error(err)
+      raise Exception('Pipeline is not configured correctly')
+
+  def __validate_step(self, step: PipelineStep) -> List[str]:
+    errors = []
+    if isinstance(step, CompositeStep):
+      for sub_step in step.steps:
+        errors += self.__validate_step(sub_step)
+    if isinstance(step, ContainerizedStep):
+      if isinstance(step.builder, SingularityExecutorBuilder):
+        if not os.path.exists(step.builder.sif_path):
+          errors.append(f'Container {step.full_name()} does not exist: {step.builder.sif_path}')
+    return errors

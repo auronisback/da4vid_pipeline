@@ -2,7 +2,7 @@ import sys
 
 from da4vid.pipeline.config import StaticConfig
 from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep, CARBonAraStep
-from da4vid.pipeline.interaction import MasifStep
+from da4vid.pipeline.interaction import MasifStep, PestoStep
 from da4vid.pipeline.steps import PipelineRootStep, PipelineStep, CompositeStep, FoldCollectionStep
 from da4vid.pipeline.validation import OmegaFoldStep, SequenceFilteringStep, ColabFoldStep
 
@@ -57,6 +57,8 @@ class PipelinePrinter:
       self.__print_fold_collection_step(step, header, last)
     elif isinstance(step, CARBonAraStep):
       self.__print_carbonara_step(step, header, last)
+    elif isinstance(step, PestoStep):
+      self.__print_pesto_step(step, header, last)
     else:
       print(header, file=self.file)
 
@@ -133,6 +135,10 @@ class PipelinePrinter:
 
   def __print_masif_step(self, masif_step: MasifStep, header: str, last: bool) -> None:
     print(f'{header + (self.ELBOW if last else self.TEE)}MaSIF: {masif_step.name}', file=self.file)
+
+  def __print_pesto_step(self, pesto_step: PestoStep, header: str, last: bool) -> None:
+    print(f'{header + (self.ELBOW if last else self.TEE)}PeSTo: {pesto_step.name}', file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {pesto_step.get_context_folder()}', file=self.file)
 
   def __print_fold_collection_step(self, fc_step: FoldCollectionStep, header: str, last: bool) -> None:
     print(f'{header + (self.ELBOW if last else self.TEE)}FoldCollection', file=self.file)
