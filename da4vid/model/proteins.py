@@ -206,6 +206,7 @@ class Protein:
     self.__coords = None  # Cache for coordinates
     self.__rog = None  # Cache for Radius of Gyration (NOTE: is this needed?)
     self.__ca_coords = None  # Cache for coordinates of C-alpha atoms
+    self.__backbone_coords = None  # Cache for coordinates of all backbone atoms
     self.__residues = None  # Cache for residues
     self.__atoms = None  # Cache for atoms
 
@@ -292,6 +293,16 @@ class Protein:
               ca_coords.append([*atom.coords])
       self.__ca_coords = torch.tensor(ca_coords)
     return self.__ca_coords
+
+  def backbone_coords(self):
+    if self.__backbone_coords is None:
+      backbone_coords = []
+      for chain in self.chains:
+        for resi in chain.residues:
+          for atom in resi.backbone_atoms():
+            backbone_coords.append([*atom.coords])
+      self.__backbone_coords = torch.tensor(backbone_coords)
+    return self.__backbone_coords
 
   def add_prop(self, key: str, value: Any) -> None:
     """

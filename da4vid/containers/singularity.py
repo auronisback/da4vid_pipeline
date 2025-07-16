@@ -81,6 +81,7 @@ class SingularityExecutor(ContainerExecutor):
     :param cmd: The command string
     :return: The list of arguments for singularity exec command
     """
+    print(cmd)
     command = []
     command_part = ''
     stack = []
@@ -104,6 +105,7 @@ class SingularityExecutor(ContainerExecutor):
     # Adding last command if needed
     if command_part:
       command.append(command_part)
+    print(command)
     return command
 
 

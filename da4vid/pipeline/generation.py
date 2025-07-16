@@ -377,7 +377,6 @@ class ProteinMPNNStep(ContainerizedStep):
 
 class CARBonAraStep(ContainerizedStep):
 
-  # TODO: check why omegafold cannot use this
   class CARBonAraConfig:
 
     def __init__(self, num_sequences: int, imprint_ratio: float = .5,
@@ -460,7 +459,9 @@ class CARBonAraStep(ContainerizedStep):
 
   def __retrieve_sequences_from_output_folder(self, sample_set: SampleSet) -> SampleSet:
     for fasta in os.listdir(self.output_dir):
-      if fasta.endswith('.fa') or fasta.endswith('.fasta'):
+      if not fasta.endswith('.fa') and not fasta.endswith('.fasta'):
+        os.unlink(os.path.join(self.output_dir, fasta))
+      else:
         sequence_name = fasta.replace('.fasta', '').replace('.fa', '')
         tokens = sequence_name.split('_')
         sample_name, seq_id = '_'.join(tokens[:-1]), int(tokens[-1])
@@ -473,7 +474,23 @@ class CARBonAraStep(ContainerizedStep):
           raise PipelineException(f'No sequences found in {fasta_filepath}')
         # CARBonAra FASTAs contains just a single sequence
         sample.add_sequences(Sequence(sequence_name, fasta_filepath, sample, sequences[0]))
+    self.__reorganize_fastas(sample_set)
     return sample_set
+
+  def __reorganize_fastas(self, sample_set: SampleSet) -> None:
+    """
+    Reorganizes sequences in samples in a single fasta file
+    :param sample_set: The sample set with obtained sequences
+    """
+    for sample in sample_set.samples():
+      sample_fasta = os.path.join(self.output_dir, f'{sample.name}.fa')
+      with open(sample_fasta, 'w') as f:
+        for sequence in sample.sequences():
+          os.unlink(sequence.filepath)
+          f.write(f'>{sequence.name}\n{sequence.sequence_to_str()}\n')
+          sequence.filepath = sample_fasta
+        f.flush()
+
 
   def output_folder(self) -> str:
     return self.output_dir

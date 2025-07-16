@@ -1,5 +1,5 @@
 import math
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 import torch
 
@@ -134,3 +134,23 @@ def filter_by_plddt(proteins: List[Protein], cutoff: float = None, percentage: b
   filtered.sort(key=lambda p: p.get_prop(plddt_prop), reverse=True)
   num_retained = int(cutoff*len(proteins)/100) if percentage else cutoff
   return filtered[:num_retained]
+
+
+def evaluate_interaction_window(protein: Protein, epitope_position: Tuple[int, int],
+                                interaction_metric: str, offset: int = 3) -> float:
+  """
+  Evaluates the softmax interactions between a sliding window around the epitope on the sliding
+  window across the whole protein. The window has the same size of the epitope and is slided according
+  to the offset parameter. For example, if the epitope is in position (24,33) and the offset is 3, the
+  window will have a size of 9 residues, and the considered windows will be 21-30, 22-31, ..., 24-33, 25-24,
+  ..., 26-35, 27-36. A softmax between these windows and a sliding window across all residues will be then
+  evaluated, and its result returned.
+  :param protein: The protein whose interaction window has to be evaluated
+  :param epitope_position: A tuple with the starting index and the ending index of the epitope
+  :param interaction_metric: The metric referring to a per-residue interaction score, which will be
+                             used as a key in protein residues' property dictionary
+  :param offset: The offset around which the window should slide.
+  :return: The softmax between the sum of the interaction window around the epitope on all windows
+           across the whole protein
+  """
+  pass

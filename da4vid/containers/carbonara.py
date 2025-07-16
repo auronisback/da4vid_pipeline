@@ -52,13 +52,13 @@ class CARBonAraContainer(BaseContainer):
       self.output_dir: self.CONTAINER_OUTPUT_DIR
     }).set_device(self.gpu_manager.next_device())
     self.__ignored_amino_acids_str = '' if self.ignored_amino_acids is None else (
-        '--ignored_amino_acids "' + ','.join(self.ignored_amino_acids) + '"')
+        '--ignored_amino_acids "' + ','.join(self.ignored_amino_acids) + '" ')
     self.__known_chains_str = '' if self.known_chains is None else (
-        '--known_chains "' + ','.join(self.known_chains) + '"')
+        '--known_chains "' + ','.join(self.known_chains) + '" ')
     self.__known_positions_str = '' if self.known_positions is None else (
-        '--known_positions "' + ','.join([str(p) for p in self.known_positions]) + '"')
+        '--known_positions "' + ','.join([str(p) for p in self.known_positions]) + '" ')
     self.__unknown_positions_str = '' if self.unknown_positions is None else (
-        '--unknown_positions "' + ','.join([str(p) for p in self.unknown_positions]) + '"')
+        '--unknown_positions "' + ','.join([str(p) for p in self.unknown_positions]) + '" ')
     with self.builder.build() as executor:
       logging.info(f'[HOST] Executing CARBonAra on {executor.device().name}')
       res = True
@@ -75,10 +75,10 @@ class CARBonAraContainer(BaseContainer):
             f'--num_sequences {self.num_sequences} '
             f'--imprint_ratio {self.imprint_ratio} '
             f'--sampling_method {self.sampling_method} '
-            f'{self.__known_chains_str} '
-            f'{self.__known_positions_str} '
-            f'{self.__unknown_positions_str} '
-            f'{self.__ignored_amino_acids_str} '
+            f'{self.__known_chains_str}'
+            f'{self.__known_positions_str}'
+            f'{self.__unknown_positions_str}'
+            f'{self.__ignored_amino_acids_str}'
             f'{f"--ignore_hetatm {self.ignore_het_atm} " if self.ignore_het_atm else ""}'
             f'{f"--ignore_water {self.ignore_water} " if self.ignore_water else ""}'
             f'{os.path.join(self.CONTAINER_INPUT_DIR, backbone_basename)} {self.CONTAINER_OUTPUT_DIR}')
