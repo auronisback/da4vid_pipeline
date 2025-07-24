@@ -2,7 +2,7 @@ import sys
 
 from da4vid.pipeline.config import StaticConfig
 from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep, CARBonAraStep
-from da4vid.pipeline.interaction import MasifStep, PestoStep
+from da4vid.pipeline.interaction import MasifStep, PestoStep, InteractionWindowEvaluationStep
 from da4vid.pipeline.steps import PipelineRootStep, PipelineStep, CompositeStep, FoldCollectionStep
 from da4vid.pipeline.validation import OmegaFoldStep, SequenceFilteringStep, ColabFoldStep
 
@@ -59,6 +59,8 @@ class PipelinePrinter:
       self.__print_carbonara_step(step, header, last)
     elif isinstance(step, PestoStep):
       self.__print_pesto_step(step, header, last)
+    elif isinstance(step, InteractionWindowEvaluationStep):
+      self.__print_interaction_window_step(step, header, last)
     else:
       print(header, file=self.file)
 
@@ -156,4 +158,12 @@ class PipelinePrinter:
     print(f'{header}{self.BLANK if last else self.PIPE}  +  Ignore Hetero-Atoms: {cb_step.config.ignore_het_atm}',
           file=self.file)
     print(f'{header}{self.BLANK if last else self.PIPE}  +  Ignore Water: {cb_step.config.ignore_water}',
+          file=self.file)
+
+  def __print_interaction_window_step(self, iw_step: InteractionWindowEvaluationStep, header: str, last: bool):
+    print(f'{header + (self.ELBOW if last else self.TEE)}CARBonAra: {iw_step.name}', file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Folder: {iw_step.get_context_folder()}', file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Offset: {iw_step.offset}',
+          file=self.file)
+    print(f'{header}{self.BLANK if last else self.PIPE}  +  Interaction Key: {iw_step.interaction_key}',
           file=self.file)

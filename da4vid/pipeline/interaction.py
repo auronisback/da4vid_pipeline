@@ -2,16 +2,19 @@ import abc
 import logging
 import os
 import shutil
+from typing import List
 
 import numpy as np
 import torch
 
 from da4vid.containers.masif import MasifContainer
 from da4vid.containers.pesto import PestoContainer
+from da4vid.filters import evaluate_interaction_window
+from da4vid.gpus.cuda import CudaDeviceManager
 from da4vid.io import read_from_pdb
-from da4vid.model.proteins import Protein
+from da4vid.model.proteins import Protein, Epitope
 from da4vid.model.samples import SampleSet
-from da4vid.pipeline.steps import ContainerizedStep, PipelineException
+from da4vid.pipeline.steps import ContainerizedStep, PipelineException, PipelineStep
 
 
 class MasifStep(ContainerizedStep):
@@ -209,3 +212,44 @@ class PestoStep(ContainerizedStep):
 
   def input_folder(self) -> str:
     return self.input_dir
+
+
+class InteractionWindowEvaluationStep(PipelineStep):
+
+  def __init__(self, epitope: Epitope, offset: int, gpu_manager: CudaDeviceManager, interaction_key: str, **kwargs):
+    super().__init__(**kwargs)
+    self.epitope = epitope
+    self.offset = offset
+    self.interaction_key = interaction_key
+    self.input_dir = os.path.join(self.get_context_folder(), 'inputs')
+    self.output_dir = os.path.join(self.get_context_folder(), 'outputs')
+    self.gpu_manager = gpu_manager
+
+  def _execute(self, sample_set: SampleSet | None) -> SampleSet:
+    proteins = [sample.protein for sample in sample_set.samples()]
+    interaction_windows = evaluate_interaction_window(proteins, (self.epitope.start, self.epitope.end),
+                                                      self.interaction_key, self.offset,
+                                                      device=self.gpu_manager.next_device().name)
+    for protein, interaction in zip(proteins, interaction_windows):
+      protein.props.add_value('interaction_score', interaction.item())
+    sorted(proteins, key=lambda p: p.props.get_value('interaction_score'), reverse=True)
+    self.__write_scores(proteins, os.path.join(self.output_dir, 'interactions.txt'))
+    return sample_set
+
+  def _resume(self, sample_set: SampleSet | None) -> SampleSet:
+    return self._execute(sample_set)
+
+  def output_folder(self) -> str:
+    return self.output_dir
+
+  def input_folder(self) -> str:
+    return self.input_dir
+
+  @staticmethod
+  def __write_scores(proteins: List[Protein], outfile: str):
+    os.makedirs(os.path.dirname(outfile), exist_ok=True)
+    with open(outfile, 'w') as f:
+      f.write('Name;Score\n')
+      for p in proteins:
+        f.write(f'{p.name};{p.props.get_value("interaction_score")}\n')
+      f.flush()

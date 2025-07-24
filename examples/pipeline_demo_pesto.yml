@@ -16,10 +16,10 @@ demo pipeline with carbonara:
                             ss_threshold: 4
                             rog_cutoff: 10
                     -   proteinmpnn:
-                            seqs_per_target: 20
+                            seqs_per_target: 10
                             sampling_temp: .5
                             backbone_noise: .20
-                            batch_size: 20
+                            batch_size: 10
             -   validation:
                     steps:
                     -   omegafold:
@@ -50,10 +50,10 @@ demo pipeline with carbonara:
             -   generation:
                     steps:
                     -   proteinmpnn:
-                            seqs_per_target: 20
+                            seqs_per_target: 10
                             sampling_temp: .2
                             backbone_noise: .0
-                            batch_size: 20
+                            batch_size: 10
             -   validation:
                     steps:
                     -   omegafold:
@@ -84,3 +84,7 @@ demo pipeline with carbonara:
             steps:
             -   pesto:
                     name: 'interactive_sites'
+            -   interaction_window:
+                    name: 'pesto_interaction_window'
+                    offset: 4
+                    interaction_key: 'pesto.interaction_prob'

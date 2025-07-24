@@ -136,8 +136,8 @@ def filter_by_plddt(proteins: List[Protein], cutoff: float = None, percentage: b
   return filtered[:num_retained]
 
 
-def evaluate_interaction_window(protein: Protein, epitope_position: Tuple[int, int],
-                                interaction_metric: str, offset: int = 3) -> float:
+def evaluate_interaction_window(proteins: List[Protein], epitope_position: Tuple[int, int],
+                                interaction_metric: str, offset: int = 3, device: str = 'cpu') -> torch.Tensor:
   """
   Evaluates the softmax interactions between a sliding window around the epitope on the sliding
   window across the whole protein. The window has the same size of the epitope and is slided according
@@ -145,12 +145,38 @@ def evaluate_interaction_window(protein: Protein, epitope_position: Tuple[int, i
   window will have a size of 9 residues, and the considered windows will be 21-30, 22-31, ..., 24-33, 25-24,
   ..., 26-35, 27-36. A softmax between these windows and a sliding window across all residues will be then
   evaluated, and its result returned.
-  :param protein: The protein whose interaction window has to be evaluated
+  :param proteins: The list of proteins whose interaction window has to be evaluated
   :param epitope_position: A tuple with the starting index and the ending index of the epitope
   :param interaction_metric: The metric referring to a per-residue interaction score, which will be
                              used as a key in protein residues' property dictionary
   :param offset: The offset around which the window should slide.
-  :return: The softmax between the sum of the interaction window around the epitope on all windows
-           across the whole protein
+  :param device: The string indicating the device on which the evaluation should be performed
+  :return: A 1xN tensor with the softmax between the sum of the interaction window around the epitope on all windows
+           across the whole protein, with N number of proteins
   """
-  pass
+  # Checking that interaction key is present in each residue
+  for protein in proteins:
+    for residue in protein.residues():
+      if not residue.props.has_key(interaction_metric):
+        raise ValueError(f'Interaction metric "{interaction_metric}" not found for protein {protein.name}')
+  interactions = []
+  for protein in proteins:
+    interactions.append(torch.tensor([
+      resi.props.get_value(interaction_metric) for resi in protein.residues()], device=device))
+  return evaluate_softmax_between_windows(torch.stack(interactions), start=epitope_position[0],
+                                          end=epitope_position[1], offset=offset)
+
+
+def evaluate_softmax_between_windows(interactions: torch.Tensor, start: int, end: int, offset: int):
+  # Evaluating all windows
+  window_length = end - start + 1
+  windows = []
+  for i in range(interactions.shape[1] - window_length + 1):
+    windows.append(torch.sum(interactions[:, i:i + window_length], dim=1))
+  windows = torch.stack(windows, dim=1)
+  # Evaluating the exp function
+  exp_win = torch.exp(windows)
+  denominator = torch.sum(exp_win, dim=1)
+  numerator = torch.sum(exp_win[:, start - offset - 1: start + offset], dim=1)
+  return numerator / denominator
+

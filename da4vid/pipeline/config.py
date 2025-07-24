@@ -21,7 +21,7 @@ from da4vid.io import read_from_pdb
 from da4vid.model.proteins import Protein, Epitope
 from da4vid.model.samples import Sample
 from da4vid.pipeline.generation import RFdiffusionStep, BackboneFilteringStep, ProteinMPNNStep, CARBonAraStep
-from da4vid.pipeline.interaction import MasifStep, PestoStep
+from da4vid.pipeline.interaction import MasifStep, PestoStep, InteractionWindowEvaluationStep
 from da4vid.pipeline.steps import CompositeStep, PipelineStep, PipelineRootStep, FoldCollectionStep, ContainerizedStep
 from da4vid.pipeline.validation import OmegaFoldStep, SequenceFilteringStep, ColabFoldStep
 
@@ -419,6 +419,13 @@ class PipelineCreator:
             ignore_water=bool(el.get('ignore_water', False)),
             ignore_het_atm=bool(el.get('ignore_het_atm', False))
           )
+        )
+      case 'interaction_window':
+        return InteractionWindowEvaluationStep(
+          name=el_name, parent=parent, folder=el.get('folder', None), gpu_manager=self.static_config.gpu_manager,
+          epitope=root.epitope,
+          offset=el.get('offset', 3),
+          interaction_key=el['interaction_key']
         )
       case _:  # Any other case is hopefully a composite step
         comp_step = CompositeStep(name=el_name, parent=parent, folder=el.get('folder', None))

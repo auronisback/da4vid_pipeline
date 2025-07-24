@@ -1,7 +1,12 @@
 import unittest
+from typing import List
 
-from da4vid.filters import filter_by_rog, filter_by_ss, cluster_by_ss, filter_by_plddt
+import torch
+
+from da4vid.filters import filter_by_rog, filter_by_ss, cluster_by_ss, filter_by_plddt, evaluate_interaction_window, \
+  evaluate_softmax_between_windows
 from da4vid.io.pdb_io import read_pdb_folder, read_from_pdb
+from da4vid.model.proteins import Protein
 from test.cfg import RESOURCES_ROOT, TEST_GPU
 
 
@@ -197,6 +202,41 @@ class FiltersTest(unittest.TestCase):
     proteins.append(read_from_pdb(f'{pdb_folder}/orig.pdb'))
     with self.assertRaises(AttributeError):
       filter_by_plddt(proteins, cutoff=5)
+
+  def test_evaluate_softmax_between_windows(self):
+    input_tensor = torch.tensor([
+      [1., 0., 1., 1., 0., 0., 0.],
+      [0., 1., 1., 1., 0., 0., 0.],
+      [1., 1., 0., 0., 0., 1., 0.]
+    ])
+    res = evaluate_softmax_between_windows(input_tensor, 3, 5, 1)
+    self.assertEqual(torch.Size([3]), res.shape)
+    torch.testing.assert_close(torch.tensor([0.676, 0.783, 0.389]), res, atol=1e-3, rtol=1e-2)
+
+  def test_evaluate_softmax_between_windows_with_huge_offset(self):
+    input_tensor = torch.tensor([
+      [1., 0., 1., 1., 0., 0., 0.],
+      [0., 1., 1., 1., 0., 0., 0.],
+      [1., 1., 0., 0., 0., 1., 0.]
+    ])
+    res = evaluate_softmax_between_windows(input_tensor, 3, 5, 10)
+    self.assertEqual(torch.Size([3]), res.shape)
+    torch.testing.assert_close(torch.tensor([1., 1., 1.]), res, atol=1e-3, rtol=1e-2)
+
+  def test_evaluate_interaction_window(self):
+    pdb_folder = f'{RESOURCES_ROOT}/filter_test/interactions'
+    proteins = self.__read_pdb_folder_and_assign_interactions(pdb_folder, 'pesto.interface_prob')
+    if_win = evaluate_interaction_window(proteins, (27, 35), 'pesto.interface_prob')
+    self.assertEqual(torch.Size([2]), if_win.shape)
+
+  @staticmethod
+  def __read_pdb_folder_and_assign_interactions(pdb_folder: str, prop_name: str) -> List[Protein]:
+    proteins = read_pdb_folder(pdb_folder, b_fact_prop='if')
+    for p in proteins:
+      for r in p.residues():
+        r.props.add_value(prop_name, r.atoms[0].props.get('if'))
+    return proteins
+
 
 if __name__ == '__main__':
   unittest.main()
