@@ -11,13 +11,13 @@ from da4vid.gpus.cuda import CudaDeviceManager
 class OmegaFoldContainer(BaseContainer):
   DEFAULT_IMAGE = 'da4vid/omegafold:latest'
 
-  CONTAINER_MODEL_FOLDER = '/root/.cache/omegafold_ckpt'
+  CONTAINER_MODEL_FOLDER = '/Omegafold/models'
   CONTAINER_INPUT_DIR = '/Omegafold/run/inputs'
   CONTAINER_OUTPUT_DIR = '/Omegafold/run/outputs'
   __MAIN_SCRIPT = '/Omegafold/main.py'
 
   def __init__(self, builder: ContainerExecutorBuilder, gpu_manager: CudaDeviceManager,
-               model_dir: str, input_dir: str, output_dir: str, model_weights: str = "2",
+               model_dir: str, input_dir: str, output_dir: str, model: int = 2,
                num_recycles: int = 5, max_parallel: int = 1, out_logfile: str = None,
                err_logfile: str = None):
     super().__init__(builder=builder, gpu_manager=gpu_manager)
@@ -25,7 +25,7 @@ class OmegaFoldContainer(BaseContainer):
     self.input_dir = input_dir
     self.output_dir = output_dir
     self.num_recycles = num_recycles
-    self.model_weights = model_weights
+    self.model = model
     self.max_parallel = max_parallel
     self.out_logfile = out_logfile
     self.err_logfile = err_logfile
@@ -69,8 +69,10 @@ class OmegaFoldContainer(BaseContainer):
 
   def __create_command(self, fasta_basename):
     fasta_no_ext = '.'.join(fasta_basename.split('.')[:-1])
+    model_weights_file = os.path.join(self.CONTAINER_MODEL_FOLDER, f'model{self.model if self.model == 2 else ""}.pt')
     return (f'python3 {self.__MAIN_SCRIPT} '
-            f'--model {self.model_weights} '
+            f'--weights_file {model_weights_file} '
+            f'--model {self.model} '
             f'--num_cycle {self.num_recycles} '
             f'{OmegaFoldContainer.CONTAINER_INPUT_DIR}/{fasta_basename} '
             f'{OmegaFoldContainer.CONTAINER_OUTPUT_DIR}/{fasta_no_ext}')

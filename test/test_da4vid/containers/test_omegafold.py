@@ -124,7 +124,7 @@ class OmegaFoldDockerContainerTest(unittest.TestCase):
       model_dir=self.model_dir,
       input_dir=self.input_dir,
       output_dir=self.output_dir,
-      model_weights='invalid',  # Invalid model weights
+      model=-1,  # Invalid model weights
       num_recycles=-2,  # Negative number of recycles
       gpu_manager=self.gpu_manager
     ).run()
@@ -215,7 +215,7 @@ class OmegaFoldSingularityContainerTest(unittest.TestCase):
       model_dir=self.model_dir,
       input_dir=self.input_dir,
       output_dir=self.output_dir,
-      model_weights='invalid',  # Invalid model weights
+      model=-1,  # Invalid model weights
       num_recycles=-2,  # Negative number of recycles
       gpu_manager=self.gpu_manager
     ).run()

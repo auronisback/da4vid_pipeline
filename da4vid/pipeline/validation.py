@@ -51,7 +51,7 @@ class OmegaFoldStep(ContainerizedStep):
       input_dir=self.input_dir,
       output_dir=self.output_dir,
       num_recycles=self.config.num_recycles,
-      model_weights=self.config.model_weights,
+      model=self.config.model_weights,
       gpu_manager=self.gpu_manager,
       max_parallel=self.max_parallel,
       out_logfile=self.out_logfile,

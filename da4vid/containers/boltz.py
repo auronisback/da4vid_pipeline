@@ -16,7 +16,7 @@ class BoltzContainer(BaseContainer):
   CONTAINER_OUTPUT_DIR = '/boltz/outputs'
 
   # Scripts and commands
-  __COPY_MSA_SCRIPT = '/boltz/scripts/copy_msa.py'
+  __COPY_MSA_SCRIPT = '/boltz/scripts/copy_msa.py'  # TODO: remove this and create FASTAs accordingly
 
   def __init__(self, builder: ContainerExecutorBuilder, gpu_manager: CudaDeviceManager,
                model_dir: str, input_dir: str, output_dir: str, num_recycle: int = 5,
