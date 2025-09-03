@@ -233,7 +233,7 @@ class InteractionWindowEvaluationStep(PipelineStep):
     for protein, interaction in zip(proteins, interaction_windows):
       protein.props.add_value('interaction_score', interaction.item())
     sorted(proteins, key=lambda p: p.props.get_value('interaction_score'), reverse=True)
-    self.__write_scores(proteins, os.path.join(self.output_dir, 'interactions.txt'))
+    self.__write_scores(proteins, os.path.join(self.output_dir, 'interactions.csv'))
     return sample_set
 
   def _resume(self, sample_set: SampleSet | None) -> SampleSet:

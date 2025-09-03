@@ -1,7 +1,7 @@
 demo pipeline with carbonara:
     folder: demo_pipeline_carbonara
     antigen: demo.pdb
-    epitope: A26-34
+    epitope: A27-35
     steps:
     -   iteration 1:
             steps:
@@ -82,5 +82,9 @@ demo pipeline with carbonara:
                             model: 'alphafold2'
     -   interactions:
             steps:
-            -   masif:
-                    name: 'MaSIF'
+            -   pesto:
+                        name: 'interactive_sites'
+            -   interaction_window:
+                        name: 'pesto_interaction_window'
+                        offset: 4
+                        interaction_key: 'pesto.interaction_prob'

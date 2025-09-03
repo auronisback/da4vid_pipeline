@@ -31,9 +31,9 @@ class PipelinePrinter:
     epi_seq = ''
     for chain in ag_prot.chains:
       if chain.name == epi.chain:
-        epi_seq += (('-' * epi.start
-                     + chain.sequence()[epi.start:epi.end + 1])
-                    + ('-' * (len(chain.sequence()) - epi.end - 1)))
+        epi_seq += (('-' * (epi.start - 1)
+                     + chain.sequence()[epi.start-1:epi.end])
+                    + ('-' * (len(chain.sequence()) - epi.end)))
     print(f'{self.PIPE}  +  Epitope: {epi_seq}', file=self.file)
 
   def __print_step(self, step: PipelineStep, header: str, last: bool) -> None:
