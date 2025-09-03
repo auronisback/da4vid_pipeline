@@ -472,9 +472,17 @@ class CARBonAraStep(ContainerizedStep):
         sequences = read_fasta(fasta_filepath)
         if not sequences:
           raise PipelineException(f'No sequences found in {fasta_filepath}')
+        # Removing trailing zeros from last part of sequence name
+        tokens = sequence_name.split('_')
+        tokens[-1] = str(int(tokens[-1]))
+        sequence_name = '_'.join(tokens)
         # CARBonAra FASTAs contains just a single sequence
-        sample.add_sequences(Sequence(sequence_name, fasta_filepath, sample, sequences[0]))
+        sequence = sequences[0]
+        sequence.name = sequence_name
+        sample.add_sequences(Sequence(sequence_name, fasta_filepath, sample, sequence))
     self.__reorganize_fastas(sample_set)
+    for sam in sample_set.samples():
+      print([seq.protein.name for seq in sam.sequences()])
     return sample_set
 
   def __reorganize_fastas(self, sample_set: SampleSet) -> None:
@@ -490,7 +498,6 @@ class CARBonAraStep(ContainerizedStep):
           f.write(f'>{sequence.name}\n{sequence.sequence_to_str()}\n')
           sequence.filepath = sample_fasta
         f.flush()
-
 
   def output_folder(self) -> str:
     return self.output_dir
