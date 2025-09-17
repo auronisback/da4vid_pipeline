@@ -14,10 +14,13 @@ class ColabFoldContainer(BaseContainer):
   CONTAINER_MODELS_DIR = '/colabfold/weights'
   CONTAINER_INPUT_DIR = '/colabfold/inputs'
   CONTAINER_OUTPUT_DIR = '/colabfold/outputs'
+  CONTAINER_DB_DIR = '/colabfold/msa_dbs'
 
   # Scripts and commands
   __COPY_MSA_SCRIPT = '/colabfold/scripts/copy_msa.py'
   __COLABFOLD_BATCH_COMMAND = '/usr/local/envs/colabfold/bin/colabfold_batch'
+  __COLABFOLD_SEARCH_COMMAND = '/usr/local/envs/colabfold/bin/colabfold_search'
+  __MMSEQS_COMMAND = '/usr/local/envs/colabfold/bin/mmseqs'
 
   # Default API URL
   COLABFOLD_API_URL = 'https://api.colabfold.com'
@@ -29,6 +32,7 @@ class ColabFoldContainer(BaseContainer):
   def __init__(self, builder: ContainerExecutorBuilder, gpu_manager: CudaDeviceManager,
                model_dir: str, input_dir: str, output_dir: str, num_recycle: int = 5,
                zip_outputs: bool = False, model_name: str = MODEL_NAMES[0], num_models: int = 5,
+               local_msa_db: str = None,
                msa_host_url: str = COLABFOLD_API_URL, max_parallel: int = 1,
                out_logfile: str = None, err_logfile: str = None):
     super().__init__(builder, gpu_manager)
@@ -45,17 +49,22 @@ class ColabFoldContainer(BaseContainer):
     self.zip_outputs = zip_outputs
     self.out_logfile = out_logfile
     self.err_logfile = err_logfile
+    # Checking if local DB is used
+    self.local_msa_db = local_msa_db
     # Initializing list of MSA endpoint URLs
     self.msa_host_url = msa_host_url
     # Setting number of max parallel jobs
     self.max_parallel = max_parallel
 
   def run(self) -> bool:
-    self.builder.set_volumes({
+    volumes = {
       self.model_dir: ColabFoldContainer.CONTAINER_MODELS_DIR,
       self.input_dir: ColabFoldContainer.CONTAINER_INPUT_DIR,
       self.output_dir: ColabFoldContainer.CONTAINER_OUTPUT_DIR
-    })
+    }
+    if self.local_msa_db:
+      volumes[self.local_msa_db] = ColabFoldContainer.CONTAINER_DB_DIR
+    self.builder.set_volumes(volumes)
     res = True
     containers = self.__build_containers()
     chunks = self.__get_fasta_chunks()
@@ -98,19 +107,36 @@ class ColabFoldContainer(BaseContainer):
     return ff
 
   def __execute_commands_for_single_fasta(self, container, f: str) -> bool:
+    if self.local_msa_db:
+      commands = self.__get_commands_for_local_msa(f)
+    else:
+      commands = self.__get_commands_for_remote_msa(f)
     res = True
-    commands = [
+    for command in commands:
+      res = container.execute(command)
+      if not res:
+        break
+    return res
+
+  def __get_commands_for_local_msa(self, f: str) -> List[str]:
+    return [
+      self.__create_msa_search_command(f),
+      self.__prediction_command(f)
+    ]
+
+  def __get_commands_for_remote_msa(self, f: str) -> List[str]:
+    return [
       self.__create_msa_fasta_command(f),
       self.__msa_only_command(f),
       self.__copy_msa_command(f),
       self.__remove_msa_fasta_command(f),
-      self.__prediction_command(f),
+      self.__prediction_command(f)
     ]
-    for command in commands:
-      res &= container.execute(command)
-      if not res:
-        break
-    return res
+
+  def __create_msa_search_command(self, fasta: str) -> str:
+    fasta_path = self.__get_input_fasta(fasta)
+    msa_out = self.__get_local_msa_out(fasta)
+    return f'colabfold_batch --mmseqs {self.__MMSEQS_COMMAND} {fasta_path} {self.CONTAINER_DB_DIR} {msa_out}'
 
   def __create_msa_fasta_command(self, f: str) -> str:
     input_fasta = self.__get_input_fasta(f)
@@ -134,7 +160,10 @@ class ColabFoldContainer(BaseContainer):
       return int(f.readline().strip().split('_')[-1])
 
   def __prediction_command(self, f: str) -> str:
-    input_fasta = self.__get_input_fasta(f)
+    if self.local_msa_db:
+      input_data = self.__get_local_msa_out(f)
+    else:
+      input_data = self.__get_input_fasta(f)
     output_folder = self.__get_output_folder_for_fasta(f)
     return (f'{self.__COLABFOLD_BATCH_COMMAND} '
             f'--data {self.CONTAINER_MODELS_DIR} '
@@ -143,7 +172,7 @@ class ColabFoldContainer(BaseContainer):
             f'--num-models {self.num_models} '
             f'--host-url {self.msa_host_url} '
             f'{"--zip-outputs" if self.zip_outputs else ""} '
-            f'{input_fasta} {output_folder}')
+            f'{input_data} {output_folder}')
 
   def __remove_msa_fasta_command(self, f: str) -> str:
     return f'/usr/bin/rm {self.__get_tmp_msa_fasta_path(f)}'
@@ -156,6 +185,9 @@ class ColabFoldContainer(BaseContainer):
 
   def __get_tmp_msa_fasta_path(self, f: str) -> str:
     return os.path.join(self.CONTAINER_INPUT_DIR, f'msa_{f}')
+
+  def __get_local_msa_out(self, f: str) -> str:
+    return os.path.join(self.CONTAINER_OUTPUT_DIR, 'msa', '.'.join(os.path.basename(f).split('.')[:-1]))
 
   def __build_containers(self) -> List[ContainerExecutor]:
     containers = []

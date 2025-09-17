@@ -237,7 +237,7 @@ class SequenceFilteringStep(PipelineStep):
 class ColabFoldStep(ContainerizedStep):
   class ColabFoldConfig:
     def __init__(self, num_recycles: int = 3, model_name: str = ColabFoldContainer.MODEL_NAMES[0],
-                 num_models: int = 5, msa_host_url: str = ColabFoldContainer.COLABFOLD_API_URL,
+                 num_models: int = 5, msa_host_url: str = ColabFoldContainer.COLABFOLD_API_URL, msa_local_db: str = None,
                  zip_outputs: bool = False):
       """
       Creates a new configuration for the subsequent colabfold step.
@@ -245,12 +245,14 @@ class ColabFoldStep(ContainerizedStep):
       :param model_name: The name of the used model. Defaults to the first one defined in the container
       :param num_models: The number of models used for the ranking. Defaults to 5
       :param msa_host_url: The URL for the MSA server. Defaults to the standard URL of alphafold
+      :param msa_local_db: If specified, the step will use a local DB rather than remote connection
       :param zip_outputs: Whether the inputs should be compressed. Defaults to False (no compression)
       """
       self.num_recycles = num_recycles
       self.model_name = model_name
       self.num_models = num_models
       self.msa_host_url = msa_host_url
+      self.msa_local_db = msa_local_db
       self.zip_outputs = zip_outputs
 
     def __str__(self):
@@ -258,7 +260,7 @@ class ColabFoldStep(ContainerizedStep):
               f' - num_recycles: {self.num_recycles}\n'
               f' - model_name: {self.model_name}\n'
               f' - num_models: {self.num_models}\n'
-              f' - msa_host_url: {self.msa_host_url}\n'
+              f' - local_msa_db: {self.msa_local_db}' if self.msa_local_db else f' - msa_host_url: {self.msa_host_url}\n'
               f' - zip_outputs: {self.zip_outputs}\n')
 
   def __init__(self, model_dir: str, config: ColabFoldConfig, max_parallel: int = 1, **kwargs):
